@@ -41,11 +41,11 @@ executor; Qoder has no implicit access to Codex Skills or context.
 Load each reference completely when its condition applies. Do not copy its
 detailed procedure back into this file or improvise a competing workflow.
 
-| Condition | Required reference | Authoritative content |
-| --- | --- | --- |
-| Any code-changing Git task | `references/worktree-review.md` | Task lifecycle, Candidate review, corrections, retry decisions, apply, discard, cleanup |
-| OpenSpec, project rules, external context, or Skill guidance | `references/delegation-prompt.md` | Context selection, compilation, and preview fidelity |
-| Before every Task command that invokes Runner, or when interpreting its result | `references/protocol.md` | Task/Runner arguments, waits, output envelope, errors, and process lifecycle |
+| Condition                                                                      | Required reference                | Authoritative content                                                                   |
+| ------------------------------------------------------------------------------ | --------------------------------- | --------------------------------------------------------------------------------------- |
+| Any code-changing Git task                                                     | `references/worktree-review.md`   | Task lifecycle, Candidate review, corrections, retry decisions, apply, discard, cleanup |
+| OpenSpec, project rules, external context, or Skill guidance                   | `references/delegation-prompt.md` | Context selection, compilation, and preview fidelity                                    |
+| Before every Task command that invokes Runner, or when interpreting its result | `references/protocol.md`          | Task/Runner arguments, waits, output envelope, errors, and process lifecycle            |
 
 For a simple non-code task, load only the references whose conditions apply.
 For code changes, `worktree-review.md` and `protocol.md` are always required;
@@ -56,12 +56,12 @@ For code changes, `worktree-review.md` and `protocol.md` are always required;
 For each initial or review-driven correction run, choose the required decision
 before choosing its UI:
 
-| Brief Review | Transfer authorized | Required decision |
-| --- | --- | --- |
-| `off` or no `auto` preview | no | External-data authorization |
-| `required` or `auto` preview | no | Combined Brief Review and external-data authorization |
-| `required` or `auto` preview | yes | Brief Review only |
-| `off` or no `auto` preview | yes | Continue to native host-execution approval |
+| Brief Review                 | Transfer authorized | Required decision                                     |
+| ---------------------------- | ------------------- | ----------------------------------------------------- |
+| `off` or no `auto` preview   | no                  | External-data authorization                           |
+| `required` or `auto` preview | no                  | Combined Brief Review and external-data authorization |
+| `required` or `auto` preview | yes                 | Brief Review only                                     |
+| `off` or no `auto` preview   | yes                 | Continue to native host-execution approval            |
 
 Render that decision with `request_user_input` when the host exposes it;
 otherwise ask the matching question in clear, localized text without a magic
@@ -112,12 +112,12 @@ Patch application remains separate.
 
 Keep the approval boundaries distinct:
 
-| Gate | What it authorizes | What it does not authorize |
-| --- | --- | --- |
-| Brief Review | One run of the disclosed brief | External data transfer or patch application |
-| Data transfer | Disclosed data categories and bounded correction runs | Failed-run retry, broader data, or patch application |
-| Host execution | One exact escalated task command | Broader Node, shell, network, or filesystem access |
-| Patch apply | Applying the reviewed immutable Candidate | New Qoder work or unrelated source changes |
+| Gate           | What it authorizes                                    | What it does not authorize                           |
+| -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| Brief Review   | One run of the disclosed brief                        | External data transfer or patch application          |
+| Data transfer  | Disclosed data categories and bounded correction runs | Failed-run retry, broader data, or patch application |
+| Host execution | One exact escalated task command                      | Broader Node, shell, network, or filesystem access   |
+| Patch apply    | Applying the reviewed immutable Candidate             | New Qoder work or unrelated source changes           |
 
 Combine compatible gates into one user prompt when their disclosures are all
 explicit, but continue to describe each authorization separately.

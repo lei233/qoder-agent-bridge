@@ -355,7 +355,10 @@ export async function prepareSuccessorRetry(
     successor = await prepare(current.session.sourceCwd, currentRef.statePath);
     const predecessorStatePath = await realpath(currentRef.statePath);
     const successorStatePath = await realpath(successor.statePath);
-    if (successor.retryOf === null || (await realpath(successor.retryOf)) !== predecessorStatePath) {
+    if (
+      successor.retryOf === null ||
+      (await realpath(successor.retryOf)) !== predecessorStatePath
+    ) {
       throw new TaskHostError(
         "invalid_worktree_lineage",
         "Prepared successor Worktree does not immediately follow the active Task WorktreeSession.",

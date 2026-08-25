@@ -16,6 +16,7 @@ mechanics; it does not change the Skill's review, approval, or retry policy.
 
    where `<host-cwd>` is the Codex session's authorized directory, normally the
    repository root. Record the returned `taskStatePath`.
+
 3. Inspect the active WorktreeSession before any external transfer:
 
    ```sh
@@ -27,6 +28,7 @@ mechanics; it does not change the Skill's review, approval, or retry policy.
    exact `qoderCwd`, changed files, index status, and
    `includedIgnoredArtifacts`. The initial state must be `prepared`, with no
    Qoder changes and no index modification.
+
 4. A repository-root `.qoderinclude` can select locally available ignored files
    as optional copied, unstaged check inputs. Missing matches are allowed. The
    underlying Worktree v2 session validates its manifest digest and excludes
@@ -47,6 +49,7 @@ mechanics; it does not change the Skill's review, approval, or retry policy.
 
    Wait for the command's final JSON result under `protocol.md`. A failed Runner
    leaves the Task open and follows [Failed-Runner Retry](#failed-runner-retry).
+
 7. After a successful Invocation, freeze the exact review result:
 
    ```sh
@@ -57,6 +60,7 @@ mechanics; it does not change the Skill's review, approval, or retry policy.
    This advances the underlying Worktree review state and creates a Task-owned,
    immutable Candidate patch. Record its `candidate.id`, `patchPath`,
    `patchSha256`, `baselineTree`, and `changedFiles`.
+
 8. Independently inspect the immutable Candidate patch and run relevant checks
    in the active `qoderCwd`. Treat changes outside the brief's narrower
    `taskScope` as out-of-scope even when they are inside `qoderCwd`. Candidate
@@ -75,6 +79,7 @@ mechanics; it does not change the Skill's review, approval, or retry policy.
    SHA-256, and byte identity with the actual Worktree patch before the existing
    Worktree apply path runs `git apply --check --binary` and modifies the source
    without staging it.
+
 10. If the user explicitly discards the task, run:
 
     ```sh

@@ -80,12 +80,12 @@ not a `.cmd` or `.bat` shim.
 
 Supported configuration uses CLI over environment over defaults:
 
-| Setting | CLI | Environment | Default |
-| --- | --- | --- | --- |
-| executable | `--qodercli-path` | `QODERCLI_PATH` | `qodercli` in `PATH` |
-| model | `--model` | `QODER_MODEL` | unset; Qoder chooses |
-| timeout | `--timeout-ms` | `QODER_TIMEOUT_MS` | 1800000 ms |
-| retries | `--max-model-request-retries` | `QODER_MAX_MODEL_REQUEST_RETRIES` | 3 |
+| Setting    | CLI                           | Environment                       | Default              |
+| ---------- | ----------------------------- | --------------------------------- | -------------------- |
+| executable | `--qodercli-path`             | `QODERCLI_PATH`                   | `qodercli` in `PATH` |
+| model      | `--model`                     | `QODER_MODEL`                     | unset; Qoder chooses |
+| timeout    | `--timeout-ms`                | `QODER_TIMEOUT_MS`                | 1800000 ms           |
+| retries    | `--max-model-request-retries` | `QODER_MAX_MODEL_REQUEST_RETRIES` | 3                    |
 
 Timeout values must be positive integers and cannot exceed 3600000 ms. Model
 request retries must be an integer from 0 through 10. There is no
@@ -223,9 +223,9 @@ When programmatic tool calling is available, select the wait policy once per
 Invocation:
 
 | Task classification | Outer tool call | Inner session wait |
-| --- | ---: | ---: |
-| Ordinary | 200000 ms | 180000 ms |
-| Explicit long task | 300000 ms | 280000 ms |
+| ------------------- | --------------: | -----------------: |
+| Ordinary            |       200000 ms |          180000 ms |
+| Explicit long task  |       300000 ms |          280000 ms |
 
 Do not use the long-task policy unless the user explicitly classified that task
 as long running. Later rounds retain 20000 ms synchronization headroom; the

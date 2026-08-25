@@ -29,9 +29,7 @@ function git(cwd: string, args: string[]) {
 }
 
 afterEach(async () => {
-  await Promise.all(
-    fixtures.splice(0).map((path) => rm(path, { recursive: true, force: true })),
-  );
+  await Promise.all(fixtures.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
 async function createFixture() {
@@ -66,8 +64,7 @@ function envelope(cwd: string, status: "succeeded" | "failed"): RunnerEnvelope {
     qoderOutput: { format: "json", raw: "" },
     retryable: false,
     recovery: null,
-    error:
-      status === "succeeded" ? undefined : { code: "fake_failure", message: "fake failure" },
+    error: status === "succeeded" ? undefined : { code: "fake_failure", message: "fake failure" },
   };
 }
 
@@ -198,11 +195,7 @@ describe("Skill task bridge", () => {
 
     await host.fail(started.taskStatePath);
     await expect(
-      runPreparedSuccessorRetry(
-        started.taskStatePath,
-        prepared.preparedStatePath,
-        runnerOptions(),
-      ),
+      runPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath, runnerOptions()),
     ).rejects.toMatchObject({ code: "retry_preparation_stale" });
 
     await disposeWorktree(prepared.preparedStatePath, true);
@@ -217,11 +210,7 @@ describe("Skill task bridge", () => {
     await writeFile(join(prepared.qoderCwd, "tracked.txt"), "drifted-after-disclosure\n");
 
     await expect(
-      runPreparedSuccessorRetry(
-        started.taskStatePath,
-        prepared.preparedStatePath,
-        runnerOptions(),
-      ),
+      runPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath, runnerOptions()),
     ).rejects.toMatchObject({ code: "retry_preparation_changed" });
 
     await writeFile(join(prepared.qoderCwd, "tracked.txt"), "base\n");
@@ -309,8 +298,6 @@ describe("Skill-facing Task CLI parsing", () => {
         "continue",
       ]),
     ).toThrow(/successor retry/);
-    expect(() => parseTaskArgs(["recover", "--task", "/tmp/task.json"])).toThrow(
-      /Use start/,
-    );
+    expect(() => parseTaskArgs(["recover", "--task", "/tmp/task.json"])).toThrow(/Use start/);
   });
 });

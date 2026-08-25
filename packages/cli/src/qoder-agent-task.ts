@@ -307,11 +307,7 @@ export async function executeTaskCommand(
     };
   }
   if (parsed.command === "discard-retry") {
-    await discardPreparedSuccessorRetry(
-      parsed.task,
-      parsed.preparedState,
-      bridgeDependencies,
-    );
+    await discardPreparedSuccessorRetry(parsed.task, parsed.preparedState, bridgeDependencies);
     return {
       status: "succeeded",
       operation: "discard-retry",
