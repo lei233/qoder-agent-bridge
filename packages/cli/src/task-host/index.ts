@@ -19,3 +19,12 @@ export {
   type TaskResolutionResult,
   type TaskRunnerOptions,
 } from "./host";
+export {
+  discardPreparedSuccessorRetry,
+  inspectTaskWorktree,
+  prepareSuccessorRetry,
+  runPreparedSuccessorRetry,
+  type PreparedSuccessorRetry,
+  type SkillBridgeDependencies,
+  type TaskWorktreeInspection,
+} from "./skill-bridge";
