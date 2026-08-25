@@ -11,10 +11,7 @@ import {
   type RunnerEnvelope,
   type RunnerExecution,
 } from "@qoder-agent-bridge/core";
-import {
-  executeTaskCommand,
-  parseTaskArgs,
-} from "../packages/cli/src/qoder-agent-task";
+import { executeTaskCommand, parseTaskArgs } from "../packages/cli/src/qoder-agent-task";
 import {
   EmbeddedTaskHost,
   discardPreparedSuccessorRetry,
@@ -335,14 +332,7 @@ describe("Skill-facing Task CLI parsing", () => {
 
   it("maps long-task policy without requiring manual timeout plumbing", () => {
     expect(
-      parseTaskArgs([
-        "run",
-        "--task",
-        "/tmp/task.json",
-        "--prompt",
-        "long work",
-        "--long-task",
-      ]),
+      parseTaskArgs(["run", "--task", "/tmp/task.json", "--prompt", "long work", "--long-task"]),
     ).toMatchObject({
       command: "run",
       runner: { timeoutMs: "3600000" },

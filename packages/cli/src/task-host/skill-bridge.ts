@@ -16,11 +16,7 @@ import {
 } from "@qoder-agent-bridge/core";
 import { TaskHostError, normalizeHostError } from "./errors";
 import { acquireTaskLock, type TaskLock } from "./lock";
-import {
-  TASK_INVOCATION_DIR,
-  TASK_RETRY_PREPARATION_DIR,
-  TaskFileStore,
-} from "./store";
+import { TASK_INVOCATION_DIR, TASK_RETRY_PREPARATION_DIR, TaskFileStore } from "./store";
 import type { InvocationOperationResult, TaskRunnerOptions } from "./host";
 
 const PREPARED_RETRY_METADATA_VERSION = 2 as const;
@@ -267,8 +263,7 @@ async function validatePreparationOwnership(
 
   const successor = await inspect(metadata.successorStatePath);
   if (
-    (await realpath(successor.session.statePath)) !==
-    (await realpath(metadata.successorStatePath))
+    (await realpath(successor.session.statePath)) !== (await realpath(metadata.successorStatePath))
   ) {
     throw new TaskHostError(
       "retry_preparation_mismatch",
@@ -277,8 +272,7 @@ async function validatePreparationOwnership(
   }
   if (
     successor.session.retryOf === null ||
-    (await realpath(successor.session.retryOf)) !==
-      (await realpath(metadata.predecessorStatePath))
+    (await realpath(successor.session.retryOf)) !== (await realpath(metadata.predecessorStatePath))
   ) {
     throw new TaskHostError(
       "invalid_worktree_lineage",
@@ -414,8 +408,7 @@ export async function prepareSuccessorRetry(
   const inspect = dependencies.inspectWorktree ?? inspectWorktree;
   const prepare = dependencies.prepareWorktree ?? prepareWorktree;
   const dispose = dependencies.disposeWorktree ?? disposeWorktree;
-  const createPreparationId =
-    dependencies.createPreparationId ?? (() => `retry-${randomUUID()}`);
+  const createPreparationId = dependencies.createPreparationId ?? (() => `retry-${randomUUID()}`);
   const store = new TaskFileStore(taskStatePath);
   const lock = await acquireTaskLock(store.taskStatePath);
   let successor: WorktreeSession | null = null;
@@ -447,7 +440,10 @@ export async function prepareSuccessorRetry(
 
     const preparationId = createPreparationId();
     if (!PREPARATION_ID_PATTERN.test(preparationId)) {
-      throw new TaskHostError("invalid_retry_preparation", "Generated retry preparation ID is invalid.");
+      throw new TaskHostError(
+        "invalid_retry_preparation",
+        "Generated retry preparation ID is invalid.",
+      );
     }
     const metadata: PreparedRetryMetadata = {
       version: PREPARED_RETRY_METADATA_VERSION,

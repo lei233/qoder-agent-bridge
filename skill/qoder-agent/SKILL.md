@@ -34,11 +34,11 @@ executor. Qoder has no implicit access to Codex Skills or conversation context.
 
 Load each reference completely when its condition applies.
 
-| Condition | Required reference | Authoritative content |
-| --- | --- | --- |
-| Any code-changing Git task | `references/worktree-review.md` | Task lifecycle, Candidate review, correction, retry policy, apply/discard |
-| OpenSpec, project rules, external context, or Skill guidance | `references/delegation-prompt.md` | Context selection, compilation, preview fidelity |
-| Before a Task command that invokes Qoder, or when interpreting its result | `references/protocol.md` | Task execution arguments, final evidence, failures, waiting contract |
+| Condition                                                                 | Required reference                | Authoritative content                                                     |
+| ------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------- |
+| Any code-changing Git task                                                | `references/worktree-review.md`   | Task lifecycle, Candidate review, correction, retry policy, apply/discard |
+| OpenSpec, project rules, external context, or Skill guidance              | `references/delegation-prompt.md` | Context selection, compilation, preview fidelity                          |
+| Before a Task command that invokes Qoder, or when interpreting its result | `references/protocol.md`          | Task execution arguments, final evidence, failures, waiting contract      |
 
 For code changes, `worktree-review.md` and `protocol.md` are always required;
 `delegation-prompt.md` remains conditional.
@@ -51,12 +51,12 @@ retry approval, and Candidate application are distinct decisions.
 For each initial or review-driven correction run, choose the required decision
 before choosing its UI:
 
-| Brief Review | Transfer authorized | Required decision |
-| --- | --- | --- |
-| `off` or no `auto` preview | no | External-data authorization |
-| `required` or `auto` preview | no | Combined Brief Review and external-data authorization |
-| `required` or `auto` preview | yes | Brief Review only |
-| `off` or no `auto` preview | yes | Continue to native host-execution approval |
+| Brief Review                 | Transfer authorized | Required decision                                     |
+| ---------------------------- | ------------------- | ----------------------------------------------------- |
+| `off` or no `auto` preview   | no                  | External-data authorization                           |
+| `required` or `auto` preview | no                  | Combined Brief Review and external-data authorization |
+| `required` or `auto` preview | yes                 | Brief Review only                                     |
+| `off` or no `auto` preview   | yes                 | Continue to native host-execution approval            |
 
 Use `request_user_input` when the host exposes it; otherwise ask the same clear,
 localized question in text. Proceed only on an unambiguous choice.

@@ -44,6 +44,7 @@ review, correction, retry choice, approval, and acceptance.
 
    Add `--long-task` only when the user explicitly classified this Invocation as
    long running. Wait for the final Task JSON under `protocol.md`.
+
 7. After a successful Invocation, freeze the review result:
 
    ```sh
@@ -52,6 +53,7 @@ review, correction, retry choice, approval, and acceptance.
    ```
 
    Record the Candidate ID, immutable patch path/hash, and changed files.
+
 8. Independently inspect the immutable Candidate patch and run relevant checks
    in `workspace.cwd`. Treat files outside `taskScope` as out of scope even when
    they are inside the Task workspace.

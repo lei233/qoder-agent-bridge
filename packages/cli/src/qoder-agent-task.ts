@@ -3,11 +3,7 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  PROMPT_LIMIT_BYTES,
-  type RunnerEnvelope,
-  type Task,
-} from "@qoder-agent-bridge/core";
+import { PROMPT_LIMIT_BYTES, type RunnerEnvelope, type Task } from "@qoder-agent-bridge/core";
 import {
   EmbeddedTaskHost,
   TaskHostError,
@@ -313,10 +309,7 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
     const parsedStrategy = parseRetryStrategy(values);
     if (parsedStrategy.strategy === "continue") {
       if (values["--preparation"] !== undefined) {
-        throw new TaskHostError(
-          "invalid_input",
-          "--preparation is valid only for restart retry.",
-        );
+        throw new TaskHostError("invalid_input", "--preparation is valid only for restart retry.");
       }
       return {
         command,
