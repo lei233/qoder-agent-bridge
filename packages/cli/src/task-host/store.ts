@@ -9,6 +9,7 @@ export const TASK_ROOT_PREFIX = "qoder-agent-task-";
 export const TASK_STATE_FILE = "task.json";
 export const TASK_CANDIDATE_DIR = "candidates";
 export const TASK_INVOCATION_DIR = "invocations";
+export const TASK_RETRY_PREPARATION_DIR = "retry-preparations";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -128,6 +129,7 @@ export async function createTaskRoot(baseDirectory = tmpdir()): Promise<string> 
   await Promise.all([
     mkdir(join(root, TASK_CANDIDATE_DIR), { recursive: true, mode: 0o700 }),
     mkdir(join(root, TASK_INVOCATION_DIR), { recursive: true, mode: 0o700 }),
+    mkdir(join(root, TASK_RETRY_PREPARATION_DIR), { recursive: true, mode: 0o700 }),
   ]);
   return root;
 }
