@@ -7,7 +7,9 @@ import {
   PROTOCOL_VERSION,
   RUNNER_VERSION,
   WorktreeError,
+  applyReviewPatch,
   blockTask,
+  disposeWorktree,
   inspectWorktree,
   type ParsedRunnerArgs,
   type RunnerEnvelope,
@@ -258,6 +260,32 @@ describe("Embedded Task Host", () => {
     await host.discard(started.taskStatePath);
   });
 
+  it("resolves applied when Worktree reports cleanup failure after source apply", async () => {
+    const source = await createFixture();
+    const host = new EmbeddedTaskHost({
+      executeRunner: runnerSequence(["succeeded"]),
+      createId: deterministicIds(),
+    });
+    const started = await startTracked(host, source);
+    await host.run(started.taskStatePath, runnerOptions());
+    const frozen = await host.candidate(started.taskStatePath);
+    const cleanupFailureHost = new EmbeddedTaskHost({
+      applyReviewPatch: async (statePath) => {
+        await applyReviewPatch(statePath);
+        throw new WorktreeError("cleanup_failed", "simulated cleanup report");
+      },
+    });
+
+    const applied = await cleanupFailureHost.apply(started.taskStatePath, frozen.candidate.id);
+    expect(applied.cleanupIncomplete).toBe(true);
+    expect(applied.task).toMatchObject({
+      lifecycle: "closed",
+      outcome: "applied",
+      appliedCandidateId: frozen.candidate.id,
+    });
+    expect(await readFile(join(source, "tracked.txt"), "utf8")).toBe("run-1\n");
+  });
+
   it("preserves the Task lock when Worktree apply completion is ambiguous", async () => {
     const source = await createFixture();
     const host = new EmbeddedTaskHost({
@@ -273,7 +301,9 @@ describe("Embedded Task Host", () => {
       },
     });
 
-    await expect(ambiguousHost.apply(started.taskStatePath, frozen.candidate.id)).rejects.toMatchObject({
+    await expect(
+      ambiguousHost.apply(started.taskStatePath, frozen.candidate.id),
+    ).rejects.toMatchObject({
       code: "apply_state_ambiguous",
     });
     await expect(host.get(started.taskStatePath)).resolves.toMatchObject({
@@ -326,6 +356,8 @@ describe("Embedded Task Host", () => {
       lifecycle: "closed",
       outcome: "discarded",
     });
+
+    await disposeWorktree(started.statePath, true);
   });
 });
 
