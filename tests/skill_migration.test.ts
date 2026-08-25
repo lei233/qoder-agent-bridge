@@ -9,7 +9,7 @@ async function source(path: string): Promise<string> {
 }
 
 describe("Qoder Skill Task migration", () => {
-  it("uses the task-aware CLI as the primary Skill lifecycle", async () => {
+  it("uses only the task-aware CLI for the normal Skill lifecycle", async () => {
     const skill = await source("skill/qoder-agent/SKILL.md");
     const review = await source("skill/qoder-agent/references/worktree-review.md");
     const protocol = await source("skill/qoder-agent/references/protocol.md");
@@ -20,7 +20,6 @@ describe("Qoder Skill Task migration", () => {
     expect(review).toContain("qoder_agent_task.mjs candidate");
     expect(review).toContain("qoder_agent_task.mjs repair");
     expect(review).toContain("qoder_agent_task.mjs apply");
-    expect(protocol).toContain("Task-owned immutable Invocation result artifact");
     expect(protocol).toContain('"resultRef"');
 
     expect(skill).not.toMatch(/qoder_worktree\.mjs\s+(prepare|diff|reopen|apply)/u);
@@ -29,16 +28,38 @@ describe("Qoder Skill Task migration", () => {
     expect(review).not.toMatch(/qoder_agent_task\.mjs\s+recover/u);
   });
 
-  it("preserves explicit failed-run strategy and pre-transfer successor disclosure", async () => {
+  it("uses task-facing workspace disclosure and opaque retry preparation", async () => {
     const skill = await source("skill/qoder-agent/SKILL.md");
     const review = await source("skill/qoder-agent/references/worktree-review.md");
+    const delegation = await source("skill/qoder-agent/references/delegation-prompt.md");
 
-    expect(skill).toContain("retry --worktree current");
-    expect(review).toContain("prepare-retry");
-    expect(review).toContain("preparedStatePath");
-    expect(review).toContain("--prepared-state");
-    expect(review).toContain("discard-retry");
+    for (const text of [skill, review, delegation]) {
+      expect(text).toContain("workspace.cwd");
+      expect(text).not.toContain("qoderCwd");
+      expect(text).not.toContain("preparedStatePath");
+      expect(text).not.toContain("--prepared-state");
+    }
+
+    expect(skill).toContain("--strategy continue");
+    expect(skill).toContain("--strategy restart");
+    expect(review).toContain("preparationId");
+    expect(review).toContain("--preparation <preparationId>");
+    expect(review).toContain("retryEligibility.current === true");
     expect(review).toContain("No retry is automatic");
+  });
+
+  it("keeps Runner process and manual timeout mechanics below the Skill surface", async () => {
+    const skill = await source("skill/qoder-agent/SKILL.md");
+    const protocol = await source("skill/qoder-agent/references/protocol.md");
+
+    expect(skill).toContain("--long-task");
+    expect(protocol).toContain("--long-task");
+    expect(skill).not.toContain("--timeout-ms 3600000");
+    expect(protocol).not.toContain("yield_time_ms");
+    expect(protocol).not.toContain("taskkill.exe");
+    expect(protocol).not.toContain("SIGKILL");
+    expect(protocol).not.toContain("process group");
+    expect(protocol).not.toMatch(/180000\s*ms|280000\s*ms|200000\s*ms|300000\s*ms/u);
   });
 
   it("tracks the task-aware standalone Skill artifact in build freshness checks", async () => {
