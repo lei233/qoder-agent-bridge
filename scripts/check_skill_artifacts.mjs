@@ -17,6 +17,11 @@ const artifacts = [
     entry: "packages/cli/src/qoder-worktree.ts",
     committed: "skill/qoder-agent/scripts/qoder_worktree.mjs",
   },
+  {
+    name: "qoder_agent_task",
+    entry: "packages/cli/src/qoder-agent-task.ts",
+    committed: "skill/qoder-agent/scripts/qoder_agent_task.mjs",
+  },
 ];
 
 try {
