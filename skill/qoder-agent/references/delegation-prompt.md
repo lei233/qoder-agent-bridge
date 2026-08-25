@@ -19,28 +19,33 @@ Brief Review policy live in `SKILL.md`.
 - Qoder follows the resulting self-contained brief. It does not select, invoke,
   or require Codex Skills.
 - The Runner enforces its fixed safety policy independently. No brief, Skill,
-  project instruction, or specification may relax it or widen the Codex
-  session's `hostCwd` boundary.
+  project instruction, specification, or Task state may relax it or widen the
+  Codex session's `hostCwd` boundary.
 
 Let `hostCwd` be the Codex session's authorized directory; normally this is the
-repository root. Pass `hostCwd` to `qoder_worktree.mjs prepare --cwd`, then use
-the returned temporary-worktree `qoderCwd` for the Runner. Do not choose
-`hostCwd` from the files the task may actually change, and do not widen it
-merely to expose context. Keep the narrower task modification scope in the
-brief. A file outside the host boundary is Codex-readable source material, not
-Qoder-readable project context.
+repository root. Pass it to `qoder_agent_task.mjs start --cwd`, then use
+`qoder_agent_task.mjs inspect --task <taskStatePath>` to obtain the active
+WorktreeSession's exact `qoderCwd`. Do not choose `hostCwd` from the files the
+task may actually change, and do not widen it merely to expose context. Keep the
+narrower task modification scope in the brief. A file outside the host boundary
+is Codex-readable source material, not Qoder-readable project context.
+
+For a successor failed-run retry, use the exact `qoderCwd` returned by
+`qoder_agent_task.mjs prepare-retry`; it replaces the predecessor `qoderCwd` for
+the retry preview and transfer disclosure. Do not assume a successor path or
+data manifest before preparation.
 
 ## Compile Context
 
 1. Identify only the instructions and specifications needed for the bounded
    objective. Select the exact OpenSpec change rather than asking Qoder to
    discover one.
-2. After preparing the isolated worktree, verify every file Qoder must read is
-   inside `qoderCwd`. Use `qoderCwd`-relative paths in the brief.
+2. After Task preparation, verify every file Qoder must read is inside the exact
+   active `qoderCwd`. Use `qoderCwd`-relative paths in the brief.
 3. Read Codex Skills triggered or explicitly selected for the task. Extract
    only implementation guidance that Qoder can apply with its available coding
    tools.
-4. For relevant files outside `qoderCwd`, ignored artifacts not selected by a
+4. For relevant files outside `qoderCwd`, ignored artifacts not selected by the
    disclosed `.qoderinclude` snapshot, and external Skill files, inline concise
    non-sensitive rules instead of unavailable paths.
 5. Remove Skill discovery instructions, Codex tool calls, channel rules,
@@ -68,8 +73,8 @@ or `None` placeholders.
 
 ### Required Project Context
 
-Use this section only for verified files inside `qoderCwd` that Qoder must read
-before editing:
+Use this section only for verified files inside the current `qoderCwd` that
+Qoder must read before editing:
 
 ```markdown
 ## Required Project Context
@@ -120,8 +125,9 @@ resolving context:
 - <Task-specific reason to stop and report before continuing.>
 ```
 
-Keep Qoder's completion report separate from Codex's independent patch review.
-Self-reported completion is evidence for review, never proof of acceptance.
+Keep Qoder's completion report separate from Codex's independent Candidate
+review. Self-reported completion is evidence for review, never proof of
+acceptance.
 
 ## Preview Fidelity
 
@@ -130,15 +136,16 @@ preview derived from the actual brief. Include every decision-relevant field:
 
 - objective;
 - required context and compiled rules, when present;
-- host `hostCwd`, returned `qoderCwd`, and narrower `taskScope`;
+- host `hostCwd`, exact current `qoderCwd`, and narrower `taskScope`;
 - acceptance criteria and verification;
 - material assumptions, decisions, and task-specific stop conditions.
 
 The host-side preview must also include the external-service data disclosure
 required by `SKILL.md` unless the conversation already contains explicit
-task-scoped authorization. Do not put that authorization request inside the
-delegation brief sent to Qoder. Brief Review `off` does not waive this separate
-gate.
+task-scoped authorization. Use `task inspect` or successor `prepare-retry`
+output as the source of the mechanical boundary and included-artifact facts. Do
+not put the authorization request inside the delegation brief sent to Qoder.
+Brief Review `off` does not waive this separate gate.
 
 Follow `SKILL.md`'s decision table before choosing the UI: use Brief Review
 only after an already-authorized transfer, otherwise combine it with transfer
@@ -147,6 +154,6 @@ re-present changed decision-relevant fields.
 
 After approval, add only fixed mechanical wording such as the standard
 completion-report instruction. Re-present the preview if any listed field
-changes. Approval authorizes one Qoder execution with that brief, not patch
-application or a materially different correction. Follow
-`worktree-review.md` for correction and recovery briefs.
+changes. Approval authorizes one Qoder execution with that brief, not Candidate
+application or a materially different correction/retry. Follow
+`worktree-review.md` for correction and failed-run retry briefs.
