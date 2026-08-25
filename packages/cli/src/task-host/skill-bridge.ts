@@ -181,7 +181,6 @@ async function validatePreparedRetry(
   task: Task;
   currentRef: WorktreeSessionRef;
   successor: Awaited<ReturnType<typeof inspectWorktree>>;
-  metadata: PreparedRetryMetadata;
 }> {
   const metadata = await readPreparedRetryMetadata(preparedStatePath);
   const taskStatePath = await realpath(store.taskStatePath);
@@ -241,7 +240,7 @@ async function validatePreparedRetry(
       "Prepared successor Worktree does not immediately follow the active Task WorktreeSession.",
     );
   }
-  return { task, currentRef, successor, metadata };
+  return { task, currentRef, successor };
 }
 
 async function writeInvocationArtifact(
@@ -478,8 +477,17 @@ export async function discardPreparedSuccessorRetry(
   const lock = await acquireTaskLock(store.taskStatePath);
   try {
     await validatePreparedRetry(store, preparedStatePath, inspect);
-    await dispose(preparedStatePath, true);
-    await unlink(metadataPathForState(preparedStatePath)).catch(() => undefined);
+    try {
+      await dispose(preparedStatePath, true);
+      await unlink(metadataPathForState(preparedStatePath)).catch(() => undefined);
+    } catch (error) {
+      await lock.preserveForDiagnosis();
+      throw new TaskHostError(
+        "prepared_retry_cleanup_ambiguous",
+        "Prepared successor retry could not be disposed with a proven mechanical result. The Task lock was preserved for diagnosis.",
+        { error: normalizeHostError(error) },
+      );
+    }
   } finally {
     await lock.release();
   }
