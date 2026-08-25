@@ -60,4 +60,19 @@ export default defineConfig([
       alwaysBundle: ["@qoder-agent-bridge/core"],
     },
   },
+  {
+    entry: {
+      qoder_agent_task: "packages/cli/src/qoder-agent-task.ts",
+    },
+    outDir: "skill/qoder-agent/scripts",
+    outExtensions: () => ({ js: ".mjs" }),
+    format: ["esm"],
+    dts: false,
+    sourcemap: false,
+    treeshake: false,
+    clean: false,
+    deps: {
+      alwaysBundle: ["@qoder-agent-bridge/core"],
+    },
+  },
 ]);
