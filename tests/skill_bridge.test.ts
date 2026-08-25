@@ -206,6 +206,8 @@ describe("Skill task bridge", () => {
     ).rejects.toMatchObject({ code: "retry_preparation_stale" });
 
     await disposeWorktree(prepared.preparedStatePath, true);
+    const closed = await host.get(started.taskStatePath);
+    await disposeWorktree(closed.worktreeSessions[0]!.statePath, true);
   });
 
   it("rejects successor drift before the approved Runner invocation", async () => {
