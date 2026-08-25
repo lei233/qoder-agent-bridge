@@ -15,7 +15,8 @@ describe("Qoder Skill Task migration", () => {
     const protocol = await source("skill/qoder-agent/references/protocol.md");
 
     expect(skill).toContain("scripts/qoder_agent_task.mjs");
-    expect(skill).toContain("start → inspect → run");
+    expect(skill).toContain("qoder_agent_task.mjs start");
+    expect(skill).toContain("qoder_agent_task.mjs inspect");
     expect(review).toContain("qoder_agent_task.mjs candidate");
     expect(review).toContain("qoder_agent_task.mjs repair");
     expect(review).toContain("qoder_agent_task.mjs apply");
