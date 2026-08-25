@@ -7,16 +7,24 @@ import { PROMPT_LIMIT_BYTES } from "@qoder-agent-bridge/core";
 import {
   EmbeddedTaskHost,
   TaskHostError,
+  discardPreparedSuccessorRetry,
+  inspectTaskWorktree,
   normalizeHostError,
+  prepareSuccessorRetry,
+  runPreparedSuccessorRetry,
+  type SkillBridgeDependencies,
   type TaskRunnerOptions,
 } from "./task-host";
 
 export type TaskCommand =
   | "start"
+  | "inspect"
   | "run"
   | "candidate"
   | "repair"
+  | "prepare-retry"
   | "retry"
+  | "discard-retry"
   | "apply"
   | "discard"
   | "fail"
@@ -32,18 +40,37 @@ export type ParsedTaskArgs =
   | (ParsedBase & {
       command: "retry";
       task: string;
-      worktree: "current" | "successor";
+      worktree: "current";
+      preparedState: undefined;
       runner: TaskRunnerOptions;
     })
-  | (ParsedBase & { command: "candidate" | "discard" | "fail" | "get"; task: string })
+  | (ParsedBase & {
+      command: "retry";
+      task: string;
+      worktree: "successor";
+      preparedState: string;
+      runner: TaskRunnerOptions;
+    })
+  | (ParsedBase & {
+      command: "discard-retry";
+      task: string;
+      preparedState: string;
+    })
+  | (ParsedBase & {
+      command: "inspect" | "prepare-retry" | "candidate" | "discard" | "fail" | "get";
+      task: string;
+    })
   | (ParsedBase & { command: "apply"; task: string; candidate: string });
 
 const TASK_COMMANDS: readonly TaskCommand[] = [
   "start",
+  "inspect",
   "run",
   "candidate",
   "repair",
+  "prepare-retry",
   "retry",
+  "discard-retry",
   "apply",
   "discard",
   "fail",
@@ -60,6 +87,7 @@ const VALUE_OPTIONS = new Set([
   "--timeout-ms",
   "--max-model-request-retries",
   "--worktree",
+  "--prepared-state",
   "--candidate",
 ]);
 
@@ -119,7 +147,7 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
   if (!isTaskCommand(command)) {
     throw new TaskHostError(
       "invalid_input",
-      "Use start, run, candidate, repair, retry, apply, discard, fail, or get.",
+      "Use start, inspect, run, candidate, repair, prepare-retry, retry, discard-retry, apply, discard, fail, or get.",
     );
   }
 
@@ -163,16 +191,41 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
     };
   }
   if (command === "retry") {
-    rejectOptions(values, [...runnerFlags, "--worktree"]);
+    rejectOptions(values, [...runnerFlags, "--worktree", "--prepared-state"]);
+    const task = requireValue(values, "--task");
     const worktree = requireValue(values, "--worktree");
-    if (worktree !== "current" && worktree !== "successor") {
-      throw new TaskHostError("invalid_input", "--worktree must be either current or successor.");
+    if (worktree === "current") {
+      if (values["--prepared-state"] !== undefined) {
+        throw new TaskHostError(
+          "invalid_input",
+          "--prepared-state is valid only for successor retry.",
+        );
+      }
+      return {
+        command,
+        task,
+        worktree,
+        preparedState: undefined,
+        runner: runnerOptions(values),
+      };
     }
+    if (worktree === "successor") {
+      return {
+        command,
+        task,
+        worktree,
+        preparedState: requireValue(values, "--prepared-state"),
+        runner: runnerOptions(values),
+      };
+    }
+    throw new TaskHostError("invalid_input", "--worktree must be either current or successor.");
+  }
+  if (command === "discard-retry") {
+    rejectOptions(values, ["--task", "--prepared-state"]);
     return {
       command,
       task: requireValue(values, "--task"),
-      worktree,
-      runner: runnerOptions(values),
+      preparedState: requireValue(values, "--prepared-state"),
     };
   }
   if (command === "apply") {
@@ -190,14 +243,23 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
 
 export async function executeTaskCommand(
   argv: string[],
-  options: { host?: EmbeddedTaskHost; signal?: AbortSignal } = {},
+  options: {
+    host?: EmbeddedTaskHost;
+    signal?: AbortSignal;
+    skillBridgeDependencies?: SkillBridgeDependencies;
+  } = {},
 ): Promise<Record<string, unknown>> {
   const parsed = parseTaskArgs(argv);
   const host = options.host ?? new EmbeddedTaskHost();
+  const bridgeDependencies = options.skillBridgeDependencies;
 
   if (parsed.command === "start") {
     const result = await host.start(parsed.cwd);
     return { status: "succeeded", operation: "start", ...result };
+  }
+  if (parsed.command === "inspect") {
+    const result = await inspectTaskWorktree(parsed.task, bridgeDependencies);
+    return { status: "succeeded", operation: "inspect", ...result };
   }
   if (parsed.command === "get") {
     return { status: "succeeded", operation: "get", task: await host.get(parsed.task) };
@@ -222,13 +284,38 @@ export async function executeTaskCommand(
       ...result,
     };
   }
+  if (parsed.command === "prepare-retry") {
+    const result = await prepareSuccessorRetry(parsed.task, bridgeDependencies);
+    return { status: "succeeded", operation: "prepare-retry", ...result };
+  }
   if (parsed.command === "retry") {
-    const result = await host.retry(parsed.task, parsed.worktree, parsed.runner, options.signal);
+    const result =
+      parsed.worktree === "current"
+        ? await host.retry(parsed.task, "current", parsed.runner, options.signal)
+        : await runPreparedSuccessorRetry(
+            parsed.task,
+            parsed.preparedState,
+            parsed.runner,
+            options.signal,
+            bridgeDependencies,
+          );
     return {
       status: result.runner?.status === "succeeded" ? "succeeded" : "failed",
       operation: "retry",
       worktree: parsed.worktree,
       ...result,
+    };
+  }
+  if (parsed.command === "discard-retry") {
+    await discardPreparedSuccessorRetry(
+      parsed.task,
+      parsed.preparedState,
+      bridgeDependencies,
+    );
+    return {
+      status: "succeeded",
+      operation: "discard-retry",
+      preparedState: parsed.preparedState,
     };
   }
   if (parsed.command === "apply") {
