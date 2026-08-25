@@ -251,7 +251,7 @@ export async function executeTaskCommand(
 ): Promise<Record<string, unknown>> {
   const parsed = parseTaskArgs(argv);
   const host = options.host ?? new EmbeddedTaskHost();
-  const bridgeDependencies = options.skillBridgeDependencies;
+  const bridgeDependencies = options.skillBridgeDependencies ?? {};
 
   if (parsed.command === "start") {
     const result = await host.start(parsed.cwd);
