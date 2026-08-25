@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
   disposeWorktree,
   executeRunner,
@@ -16,14 +16,19 @@ import {
 } from "@qoder-agent-bridge/core";
 import { TaskHostError, normalizeHostError } from "./errors";
 import { acquireTaskLock, type TaskLock } from "./lock";
-import { TASK_INVOCATION_DIR, TaskFileStore } from "./store";
+import {
+  TASK_INVOCATION_DIR,
+  TASK_RETRY_PREPARATION_DIR,
+  TaskFileStore,
+} from "./store";
 import type { InvocationOperationResult, TaskRunnerOptions } from "./host";
 
-const PREPARED_RETRY_METADATA_FILE = "task-retry-preparation.json";
-const PREPARED_RETRY_METADATA_VERSION = 1 as const;
+const PREPARED_RETRY_METADATA_VERSION = 2 as const;
+const PREPARATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
 interface PreparedRetryMetadata {
   version: typeof PREPARED_RETRY_METADATA_VERSION;
+  preparationId: string;
   taskStatePath: string;
   taskId: string;
   taskVersion: number;
@@ -32,28 +37,28 @@ interface PreparedRetryMetadata {
   successorStatePath: string;
 }
 
-export interface TaskWorktreeInspection {
-  task: Task;
-  worktreeSessionId: string;
-  statePath: string;
-  phase: WorktreeSession["phase"];
-  worktreeRoot: string;
-  qoderCwd: string;
-  hasChanges: boolean;
+export interface TaskWorkspaceDisclosure {
+  cwd: string;
   changedFiles: string[];
-  indexModified: boolean;
-  includedIgnoredArtifacts: WorktreeSession["includedIgnoredArtifacts"];
+  includedData: WorktreeSession["includedIgnoredArtifacts"];
+}
+
+export interface RetryEligibility {
+  current: boolean;
+  blockers: string[];
+}
+
+export interface TaskWorkspaceInspection {
+  task: Task;
+  workspace: TaskWorkspaceDisclosure;
+  retryEligibility: RetryEligibility;
 }
 
 export interface PreparedSuccessorRetry {
+  preparationId: string;
   taskId: string;
   taskVersion: number;
-  predecessorWorktreeSessionId: string;
-  predecessorStatePath: string;
-  preparedStatePath: string;
-  worktreeRoot: string;
-  qoderCwd: string;
-  includedIgnoredArtifacts: WorktreeSession["includedIgnoredArtifacts"];
+  workspace: TaskWorkspaceDisclosure;
 }
 
 export interface SkillBridgeDependencies {
@@ -62,6 +67,7 @@ export interface SkillBridgeDependencies {
   prepareWorktree?: typeof prepareWorktree;
   disposeWorktree?: typeof disposeWorktree;
   createId?: (prefix: "inv" | "wt") => string;
+  createPreparationId?: () => string;
 }
 
 function activeWorktree(task: Task): WorktreeSessionRef {
@@ -107,6 +113,35 @@ function assertRetryPreconditions(task: Task): void {
   });
 }
 
+function retryEligibility(
+  task: Task,
+  inspection: Awaited<ReturnType<typeof inspectWorktree>>,
+): RetryEligibility {
+  const blockers: string[] = [];
+  try {
+    assertRetryPreconditions(task);
+  } catch {
+    blockers.push("task_retry_not_allowed");
+  }
+  if (inspection.session.phase !== "prepared") {
+    blockers.push("workspace_not_prepared");
+  }
+  if (inspection.indexModified) {
+    blockers.push("git_index_modified");
+  }
+  return { current: blockers.length === 0, blockers };
+}
+
+function workspaceDisclosure(
+  inspection: Awaited<ReturnType<typeof inspectWorktree>>,
+): TaskWorkspaceDisclosure {
+  return {
+    cwd: inspection.session.worktreeCwd,
+    changedFiles: inspection.changedFiles,
+    includedData: inspection.session.includedIgnoredArtifacts,
+  };
+}
+
 function runnerArgs(cwd: string, options: TaskRunnerOptions): ParsedRunnerArgs {
   return {
     cwd,
@@ -119,8 +154,11 @@ function runnerArgs(cwd: string, options: TaskRunnerOptions): ParsedRunnerArgs {
   };
 }
 
-function metadataPathForState(statePath: string): string {
-  return join(dirname(resolve(statePath)), PREPARED_RETRY_METADATA_FILE);
+function preparationPath(store: TaskFileStore, preparationId: string): string {
+  if (!PREPARATION_ID_PATTERN.test(preparationId)) {
+    throw new TaskHostError("invalid_retry_preparation", "Retry preparation ID is invalid.");
+  }
+  return join(store.taskRoot, TASK_RETRY_PREPARATION_DIR, `${preparationId}.json`);
 }
 
 function parsePreparedRetryMetadata(value: unknown): PreparedRetryMetadata {
@@ -130,6 +168,8 @@ function parsePreparedRetryMetadata(value: unknown): PreparedRetryMetadata {
   const metadata = value as Partial<PreparedRetryMetadata>;
   if (
     metadata.version !== PREPARED_RETRY_METADATA_VERSION ||
+    typeof metadata.preparationId !== "string" ||
+    !PREPARATION_ID_PATTERN.test(metadata.preparationId) ||
     typeof metadata.taskStatePath !== "string" ||
     typeof metadata.taskId !== "string" ||
     !Number.isSafeInteger(metadata.taskVersion) ||
@@ -142,10 +182,13 @@ function parsePreparedRetryMetadata(value: unknown): PreparedRetryMetadata {
   return metadata as PreparedRetryMetadata;
 }
 
-async function readPreparedRetryMetadata(statePath: string): Promise<PreparedRetryMetadata> {
+async function readPreparedRetryMetadata(
+  store: TaskFileStore,
+  preparationId: string,
+): Promise<PreparedRetryMetadata> {
   let source: string;
   try {
-    source = await readFile(metadataPathForState(statePath), "utf8");
+    source = await readFile(preparationPath(store, preparationId), "utf8");
   } catch {
     throw new TaskHostError(
       "invalid_retry_preparation",
@@ -153,7 +196,14 @@ async function readPreparedRetryMetadata(statePath: string): Promise<PreparedRet
     );
   }
   try {
-    return parsePreparedRetryMetadata(JSON.parse(source) as unknown);
+    const metadata = parsePreparedRetryMetadata(JSON.parse(source) as unknown);
+    if (metadata.preparationId !== preparationId) {
+      throw new TaskHostError(
+        "retry_preparation_mismatch",
+        "Retry preparation ID does not match its metadata.",
+      );
+    }
+    return metadata;
   } catch (error) {
     if (error instanceof TaskHostError) {
       throw error;
@@ -163,28 +213,32 @@ async function readPreparedRetryMetadata(statePath: string): Promise<PreparedRet
 }
 
 async function writePreparedRetryMetadata(
-  statePath: string,
+  store: TaskFileStore,
   metadata: PreparedRetryMetadata,
 ): Promise<void> {
-  await writeFile(metadataPathForState(statePath), `${JSON.stringify(metadata, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-    flag: "wx",
+  await mkdir(join(store.taskRoot, TASK_RETRY_PREPARATION_DIR), {
+    recursive: true,
+    mode: 0o700,
   });
+  await writeFile(
+    preparationPath(store, metadata.preparationId),
+    `${JSON.stringify(metadata, null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600, flag: "wx" },
+  );
 }
 
-async function validatePreparedRetry(
+async function validatePreparationOwnership(
   store: TaskFileStore,
-  preparedStatePath: string,
+  preparationId: string,
   inspect: typeof inspectWorktree,
 ): Promise<{
   task: Task;
-  currentRef: WorktreeSessionRef;
+  predecessorRef: WorktreeSessionRef;
   successor: Awaited<ReturnType<typeof inspectWorktree>>;
+  metadata: PreparedRetryMetadata;
 }> {
-  const metadata = await readPreparedRetryMetadata(preparedStatePath);
-  const taskStatePath = await realpath(store.taskStatePath);
-  if ((await realpath(metadata.taskStatePath)) !== taskStatePath) {
+  const metadata = await readPreparedRetryMetadata(store, preparationId);
+  if (resolve(metadata.taskStatePath) !== resolve(store.taskStatePath)) {
     throw new TaskHostError(
       "retry_preparation_mismatch",
       "Prepared successor retry belongs to a different Task state file.",
@@ -192,55 +246,82 @@ async function validatePreparedRetry(
   }
 
   const task = await store.load();
-  if (task.id !== metadata.taskId || task.version !== metadata.taskVersion) {
-    throw new TaskHostError(
-      "retry_preparation_stale",
-      "Task state changed after successor retry preparation; do not reuse the prepared Worktree.",
-    );
-  }
-  assertRetryPreconditions(task);
-  const currentRef = activeWorktree(task);
-  if (currentRef.id !== metadata.predecessorWorktreeSessionId) {
-    throw new TaskHostError(
-      "retry_preparation_stale",
-      "Active WorktreeSession changed after successor retry preparation.",
-    );
-  }
-  if ((await realpath(currentRef.statePath)) !== (await realpath(metadata.predecessorStatePath))) {
+  if (task.id !== metadata.taskId) {
     throw new TaskHostError(
       "retry_preparation_mismatch",
-      "Prepared successor retry predecessor does not match the active Task WorktreeSession.",
+      "Prepared successor retry belongs to a different Task.",
+    );
+  }
+  const predecessorRef = task.worktreeSessions.find(
+    (item) => item.id === metadata.predecessorWorktreeSessionId,
+  );
+  if (
+    predecessorRef === undefined ||
+    resolve(predecessorRef.statePath) !== resolve(metadata.predecessorStatePath)
+  ) {
+    throw new TaskHostError(
+      "retry_preparation_mismatch",
+      "Prepared successor retry predecessor is not owned by this Task.",
     );
   }
 
-  const successorStatePath = await realpath(preparedStatePath);
-  if (successorStatePath !== (await realpath(metadata.successorStatePath))) {
+  const successor = await inspect(metadata.successorStatePath);
+  if (resolve(successor.session.statePath) !== resolve(metadata.successorStatePath)) {
     throw new TaskHostError(
       "retry_preparation_mismatch",
-      "Prepared successor retry state path does not match its host metadata.",
+      "Prepared successor retry state does not match its Task-owned metadata.",
     );
   }
-  const successor = await inspect(successorStatePath);
-  ensurePrepared(successor.session, "Successor retry");
-  if (successor.indexModified || successor.hasChanges) {
+  if (
+    successor.session.retryOf === null ||
+    resolve(successor.session.retryOf) !== resolve(metadata.predecessorStatePath)
+  ) {
+    throw new TaskHostError(
+      "invalid_worktree_lineage",
+      "Prepared successor Worktree does not immediately follow its recorded predecessor.",
+    );
+  }
+  return { task, predecessorRef, successor, metadata };
+}
+
+async function validatePreparedRetryForRun(
+  store: TaskFileStore,
+  preparationId: string,
+  inspect: typeof inspectWorktree,
+): Promise<{
+  task: Task;
+  currentRef: WorktreeSessionRef;
+  successor: Awaited<ReturnType<typeof inspectWorktree>>;
+  metadata: PreparedRetryMetadata;
+}> {
+  const owned = await validatePreparationOwnership(store, preparationId, inspect);
+  if (owned.task.version !== owned.metadata.taskVersion) {
+    throw new TaskHostError(
+      "retry_preparation_stale",
+      "Task state changed after successor retry preparation; prepare a new retry workspace.",
+    );
+  }
+  assertRetryPreconditions(owned.task);
+  const currentRef = activeWorktree(owned.task);
+  if (currentRef.id !== owned.metadata.predecessorWorktreeSessionId) {
+    throw new TaskHostError(
+      "retry_preparation_stale",
+      "Active Task workspace changed after successor retry preparation.",
+    );
+  }
+  ensurePrepared(owned.successor.session, "Successor retry");
+  if (owned.successor.indexModified || owned.successor.hasChanges) {
     throw new TaskHostError(
       "retry_preparation_changed",
-      "Prepared successor Worktree changed before its approved Runner invocation.",
+      "Prepared retry workspace changed before its approved Runner invocation.",
     );
   }
-  if (successor.session.retryOf === null) {
-    throw new TaskHostError(
-      "invalid_worktree_lineage",
-      "Prepared successor Worktree did not record its predecessor.",
-    );
-  }
-  if ((await realpath(successor.session.retryOf)) !== (await realpath(currentRef.statePath))) {
-    throw new TaskHostError(
-      "invalid_worktree_lineage",
-      "Prepared successor Worktree does not immediately follow the active Task WorktreeSession.",
-    );
-  }
-  return { task, currentRef, successor };
+  return {
+    task: owned.task,
+    currentRef,
+    successor: owned.successor,
+    metadata: owned.metadata,
+  };
 }
 
 async function writeInvocationArtifact(
@@ -301,10 +382,10 @@ async function finishPreparedInvocation(
   }
 }
 
-export async function inspectTaskWorktree(
+export async function inspectTaskWorkspace(
   taskStatePath: string,
   dependencies: SkillBridgeDependencies = {},
-): Promise<TaskWorktreeInspection> {
+): Promise<TaskWorkspaceInspection> {
   const inspect = dependencies.inspectWorktree ?? inspectWorktree;
   const store = new TaskFileStore(taskStatePath);
   const lock = await acquireTaskLock(store.taskStatePath);
@@ -314,15 +395,8 @@ export async function inspectTaskWorktree(
     const result = await inspect(ref.statePath);
     return {
       task,
-      worktreeSessionId: ref.id,
-      statePath: result.session.statePath,
-      phase: result.session.phase,
-      worktreeRoot: result.session.worktreeRoot,
-      qoderCwd: result.session.worktreeCwd,
-      hasChanges: result.hasChanges,
-      changedFiles: result.changedFiles,
-      indexModified: result.indexModified,
-      includedIgnoredArtifacts: result.session.includedIgnoredArtifacts,
+      workspace: workspaceDisclosure(result),
+      retryEligibility: retryEligibility(task, result),
     };
   } finally {
     await lock.release();
@@ -336,6 +410,8 @@ export async function prepareSuccessorRetry(
   const inspect = dependencies.inspectWorktree ?? inspectWorktree;
   const prepare = dependencies.prepareWorktree ?? prepareWorktree;
   const dispose = dependencies.disposeWorktree ?? disposeWorktree;
+  const createPreparationId =
+    dependencies.createPreparationId ?? (() => `retry-${randomUUID()}`);
   const store = new TaskFileStore(taskStatePath);
   const lock = await acquireTaskLock(store.taskStatePath);
   let successor: WorktreeSession | null = null;
@@ -348,7 +424,7 @@ export async function prepareSuccessorRetry(
     if (current.indexModified) {
       throw new TaskHostError(
         "git_index_modified",
-        "Successor retry preparation refuses a Worktree whose Git index was modified.",
+        "Successor retry preparation refuses a workspace whose Git index was modified.",
       );
     }
 
@@ -357,16 +433,21 @@ export async function prepareSuccessorRetry(
     const successorStatePath = await realpath(successor.statePath);
     if (
       successor.retryOf === null ||
-      (await realpath(successor.retryOf)) !== predecessorStatePath
+      resolve(successor.retryOf) !== resolve(predecessorStatePath)
     ) {
       throw new TaskHostError(
         "invalid_worktree_lineage",
-        "Prepared successor Worktree does not immediately follow the active Task WorktreeSession.",
+        "Prepared successor Worktree does not immediately follow the active Task workspace.",
       );
     }
 
+    const preparationId = createPreparationId();
+    if (!PREPARATION_ID_PATTERN.test(preparationId)) {
+      throw new TaskHostError("invalid_retry_preparation", "Generated retry preparation ID is invalid.");
+    }
     const metadata: PreparedRetryMetadata = {
       version: PREPARED_RETRY_METADATA_VERSION,
+      preparationId,
       taskStatePath: await realpath(store.taskStatePath),
       taskId: task.id,
       taskVersion: task.version,
@@ -374,16 +455,16 @@ export async function prepareSuccessorRetry(
       predecessorStatePath,
       successorStatePath,
     };
-    await writePreparedRetryMetadata(successorStatePath, metadata);
+    await writePreparedRetryMetadata(store, metadata);
     const result: PreparedSuccessorRetry = {
+      preparationId,
       taskId: task.id,
       taskVersion: task.version,
-      predecessorWorktreeSessionId: currentRef.id,
-      predecessorStatePath,
-      preparedStatePath: successorStatePath,
-      worktreeRoot: successor.worktreeRoot,
-      qoderCwd: successor.worktreeCwd,
-      includedIgnoredArtifacts: successor.includedIgnoredArtifacts,
+      workspace: {
+        cwd: successor.worktreeCwd,
+        changedFiles: [],
+        includedData: successor.includedIgnoredArtifacts,
+      },
     };
     successor = null;
     return result;
@@ -395,7 +476,7 @@ export async function prepareSuccessorRetry(
         await lock.preserveForDiagnosis();
         throw new TaskHostError(
           "successor_cleanup_failed",
-          "Successor retry preparation failed and the new Worktree could not be cleaned. The Task lock was preserved for diagnosis.",
+          "Successor retry preparation failed and its workspace could not be cleaned. The Task lock was preserved for diagnosis.",
           { error: normalizeHostError(error), cleanupError: normalizeHostError(cleanupError) },
         );
       }
@@ -408,7 +489,7 @@ export async function prepareSuccessorRetry(
 
 export async function runPreparedSuccessorRetry(
   taskStatePath: string,
-  preparedStatePath: string,
+  preparationId: string,
   options: TaskRunnerOptions,
   signal?: AbortSignal,
   dependencies: SkillBridgeDependencies = {},
@@ -419,9 +500,9 @@ export async function runPreparedSuccessorRetry(
   const store = new TaskFileStore(taskStatePath);
   const lock = await acquireTaskLock(store.taskStatePath);
   try {
-    const { task, currentRef, successor } = await validatePreparedRetry(
+    const { task, currentRef, successor } = await validatePreparedRetryForRun(
       store,
-      preparedStatePath,
+      preparationId,
       inspect,
     );
     const invocationId = createId("inv");
@@ -442,11 +523,11 @@ export async function runPreparedSuccessorRetry(
       await lock.preserveForDiagnosis();
       throw new TaskHostError(
         "task_commit_ambiguous",
-        "Prepared successor Worktree could not be attached to Task state safely. The Task lock was preserved for diagnosis.",
+        "Prepared retry workspace could not be attached to Task state safely. The Task lock was preserved for diagnosis.",
         { invocationId, error: normalizeHostError(error) },
       );
     }
-    await unlink(metadataPathForState(preparedStatePath)).catch(() => undefined);
+    await unlink(preparationPath(store, preparationId)).catch(() => undefined);
 
     let execution: RunnerExecution;
     try {
@@ -471,7 +552,7 @@ export async function runPreparedSuccessorRetry(
 
 export async function discardPreparedSuccessorRetry(
   taskStatePath: string,
-  preparedStatePath: string,
+  preparationId: string,
   dependencies: SkillBridgeDependencies = {},
 ): Promise<void> {
   const inspect = dependencies.inspectWorktree ?? inspectWorktree;
@@ -479,15 +560,15 @@ export async function discardPreparedSuccessorRetry(
   const store = new TaskFileStore(taskStatePath);
   const lock = await acquireTaskLock(store.taskStatePath);
   try {
-    await validatePreparedRetry(store, preparedStatePath, inspect);
+    const { metadata } = await validatePreparationOwnership(store, preparationId, inspect);
     try {
-      await dispose(preparedStatePath, true);
-      await unlink(metadataPathForState(preparedStatePath)).catch(() => undefined);
+      await dispose(metadata.successorStatePath, true);
+      await unlink(preparationPath(store, preparationId));
     } catch (error) {
       await lock.preserveForDiagnosis();
       throw new TaskHostError(
         "prepared_retry_cleanup_ambiguous",
-        "Prepared successor retry could not be disposed with a proven mechanical result. The Task lock was preserved for diagnosis.",
+        "Prepared retry workspace could not be disposed with a proven mechanical result. The Task lock was preserved for diagnosis.",
         { error: normalizeHostError(error) },
       );
     }
