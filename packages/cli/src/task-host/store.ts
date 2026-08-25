@@ -75,7 +75,10 @@ function validateCandidate(value: unknown, index: number): void {
   expectString(item.patchPath, `candidates[${index}].patchPath`);
   expectString(item.patchSha256, `candidates[${index}].patchSha256`);
   expectString(item.createdAt, `candidates[${index}].createdAt`);
-  for (const [fileIndex, path] of expectArray(item.changedFiles, `candidates[${index}].changedFiles`).entries()) {
+  for (const [fileIndex, path] of expectArray(
+    item.changedFiles,
+    `candidates[${index}].changedFiles`,
+  ).entries()) {
     expectString(path, `candidates[${index}].changedFiles[${fileIndex}]`);
   }
 }
@@ -145,7 +148,10 @@ export class TaskFileStore {
       source = await readFile(this.taskStatePath, "utf8");
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-        throw new TaskHostError("task_not_found", `Task state does not exist: ${this.taskStatePath}`);
+        throw new TaskHostError(
+          "task_not_found",
+          `Task state does not exist: ${this.taskStatePath}`,
+        );
       }
       throw error;
     }
@@ -170,7 +176,6 @@ export class TaskFileStore {
         flag: "wx",
       });
       await rename(temporaryPath, this.taskStatePath);
-      await chmod(this.taskStatePath, 0o600);
     } finally {
       await unlink(temporaryPath).catch(() => undefined);
     }
