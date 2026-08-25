@@ -90,6 +90,24 @@ export interface EmbeddedTaskHostDependencies {
   now?: () => Date;
 }
 
+const SAFE_APPLY_FAILURE_CODES = new Set([
+  "invalid_input",
+  "invalid_state",
+  "review_state_changed",
+  "included_artifact_in_patch",
+  "apply_conflict",
+]);
+
+const SAFE_REOPEN_FAILURE_CODES = new Set([
+  "invalid_input",
+  "invalid_state",
+  "review_state_changed",
+]);
+
+function isKnownSafeWorktreeFailure(error: unknown, codes: Set<string>): boolean {
+  return error instanceof WorktreeError && codes.has(error.code);
+}
+
 function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -409,7 +427,18 @@ export class EmbeddedTaskHost {
         createdAt,
       });
 
-      const review = await this.#createReviewPatch(ref.statePath);
+      let review: Awaited<ReturnType<typeof createReviewPatch>>;
+      try {
+        review = await this.#createReviewPatch(ref.statePath);
+      } catch (error) {
+        await lock.preserveForDiagnosis();
+        throw new TaskHostError(
+          "candidate_review_ambiguous",
+          "Candidate review generation did not complete cleanly. The Task lock was preserved because Worktree side effects cannot be proven.",
+          { error: normalizeHostError(error) },
+        );
+      }
+
       try {
         const changedFiles = candidateFiles(review.changedFiles);
         const patchBytes = await readFile(review.session.reviewPatchPath);
@@ -462,11 +491,19 @@ export class EmbeddedTaskHost {
       const running = startRepair(task, { invocationId });
       await store.save(running);
 
-      let reopened;
+      let reopened: Awaited<ReturnType<typeof reopenReviewWorktree>>;
       try {
         reopened = await this.#reopenReviewWorktree(ref.statePath);
       } catch (error) {
-        return this.#finishPreRunFailure(store, lock, running, invocationId, "reopen", error);
+        if (isKnownSafeWorktreeFailure(error, SAFE_REOPEN_FAILURE_CODES)) {
+          return this.#finishPreRunFailure(store, lock, running, invocationId, "reopen", error);
+        }
+        await lock.preserveForDiagnosis();
+        throw new TaskHostError(
+          "repair_reopen_ambiguous",
+          "Repair Worktree reopening failed with an unproven mechanical state. The Invocation remains running and the Task lock was preserved for diagnosis.",
+          { invocationId, error: normalizeHostError(error) },
+        );
       }
       return this.#runStartedInvocation(
         store,
@@ -618,10 +655,18 @@ export class EmbeddedTaskHost {
       try {
         await this.#applyReviewPatch(ref.statePath);
       } catch (error) {
-        if (!(error instanceof WorktreeError && error.code === "cleanup_failed")) {
+        if (error instanceof WorktreeError && error.code === "cleanup_failed") {
+          cleanupIssue = { statePath: ref.statePath, error: normalizeHostError(error) };
+        } else if (isKnownSafeWorktreeFailure(error, SAFE_APPLY_FAILURE_CODES)) {
           throw error;
+        } else {
+          await lock.preserveForDiagnosis();
+          throw new TaskHostError(
+            "apply_state_ambiguous",
+            "Worktree apply failed after its result became mechanically ambiguous. The Task lock was preserved; do not replay apply automatically.",
+            { candidateId, error: normalizeHostError(error) },
+          );
         }
-        cleanupIssue = { statePath: ref.statePath, error: normalizeHostError(error) };
       }
 
       try {
