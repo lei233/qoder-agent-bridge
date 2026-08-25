@@ -17,6 +17,7 @@ export default defineConfig([
     entry: {
       "run-qoder": "packages/cli/src/run-qoder.ts",
       "qoder-worktree": "packages/cli/src/qoder-worktree.ts",
+      "qoder-agent-task": "packages/cli/src/qoder-agent-task.ts",
     },
     outDir: "packages/cli/dist",
     outExtensions: outputExtensions,
