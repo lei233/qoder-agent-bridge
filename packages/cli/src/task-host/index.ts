@@ -3,6 +3,7 @@ export { acquireTaskLock, lockPathForTask, TaskLock } from "./lock";
 export {
   TASK_CANDIDATE_DIR,
   TASK_INVOCATION_DIR,
+  TASK_RETRY_PREPARATION_DIR,
   TASK_ROOT_PREFIX,
   TASK_STATE_FILE,
   TaskFileStore,
@@ -21,10 +22,12 @@ export {
 } from "./host";
 export {
   discardPreparedSuccessorRetry,
-  inspectTaskWorktree,
+  inspectTaskWorkspace,
   prepareSuccessorRetry,
   runPreparedSuccessorRetry,
   type PreparedSuccessorRetry,
+  type RetryEligibility,
   type SkillBridgeDependencies,
-  type TaskWorktreeInspection,
+  type TaskWorkspaceDisclosure,
+  type TaskWorkspaceInspection,
 } from "./skill-bridge";
