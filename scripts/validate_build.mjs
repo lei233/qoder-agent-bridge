@@ -3,7 +3,11 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const coreSpecifier = 'from "@qoder-agent-bridge/core"';
-const packageOutputs = ["packages/cli/dist/run-qoder.js", "packages/cli/dist/qoder-worktree.js"];
+const packageOutputs = [
+  "packages/cli/dist/run-qoder.js",
+  "packages/cli/dist/qoder-worktree.js",
+  "packages/cli/dist/qoder-agent-task.js",
+];
 const skillOutputs = [
   "skill/qoder-agent/scripts/run_qoder.mjs",
   "skill/qoder-agent/scripts/qoder_worktree.mjs",
