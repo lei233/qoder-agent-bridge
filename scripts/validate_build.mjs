@@ -11,6 +11,7 @@ const packageOutputs = [
 const skillOutputs = [
   "skill/qoder-agent/scripts/run_qoder.mjs",
   "skill/qoder-agent/scripts/qoder_worktree.mjs",
+  "skill/qoder-agent/scripts/qoder_agent_task.mjs",
 ];
 
 for (const relativePath of packageOutputs) {
@@ -29,7 +30,7 @@ const generatedFiles = (await readdir(resolve(root, "skill/qoder-agent/scripts")
   .sort();
 const expectedFiles = skillOutputs.map((path) => path.split("/").at(-1)).sort();
 if (JSON.stringify(generatedFiles) !== JSON.stringify(expectedFiles)) {
-  throw new Error("Skill build must contain exactly the two standalone executable artifacts.");
+  throw new Error("Skill build must contain exactly the three standalone executable artifacts.");
 }
 
 for (const relativePath of skillOutputs) {
