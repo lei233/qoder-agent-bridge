@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { access, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,11 +11,14 @@ import {
   type RunnerEnvelope,
   type RunnerExecution,
 } from "@qoder-agent-bridge/core";
-import { parseTaskArgs } from "../packages/cli/src/qoder-agent-task";
+import {
+  executeTaskCommand,
+  parseTaskArgs,
+} from "../packages/cli/src/qoder-agent-task";
 import {
   EmbeddedTaskHost,
   discardPreparedSuccessorRetry,
-  inspectTaskWorktree,
+  inspectTaskWorkspace,
   prepareSuccessorRetry,
   runPreparedSuccessorRetry,
   type EmbeddedTaskHostDependencies,
@@ -95,10 +98,9 @@ function failedRunner(): (parsed: ParsedRunnerArgs) => Promise<RunnerExecution> 
   };
 }
 
-function successfulPreparedRunner(observe: (cwd: string) => Promise<void>) {
-  return async (parsed: ParsedRunnerArgs): Promise<RunnerExecution> => {
-    await observe(parsed.cwd);
-    await writeFile(join(parsed.cwd, "tracked.txt"), "successor-success\n");
+function successfulRunner(): (parsed: ParsedRunnerArgs) => Promise<RunnerExecution> {
+  return async (parsed) => {
+    await writeFile(join(parsed.cwd, "tracked.txt"), "success\n");
     return { envelope: envelope(parsed.cwd, "succeeded"), exitCode: 0 };
   };
 }
@@ -116,56 +118,64 @@ async function startFailedTask(source: string) {
 }
 
 describe("Skill task bridge", () => {
-  it("inspects failed partial work without advancing Worktree review state", async () => {
+  it("returns a task-facing workspace and retry eligibility without Worktree plumbing", async () => {
     const source = await createFixture();
     const { host, started } = await startFailedTask(source);
 
-    const inspection = await inspectTaskWorktree(started.taskStatePath);
-    expect(inspection).toMatchObject({
-      phase: "prepared",
-      hasChanges: true,
-      changedFiles: ["tracked.txt"],
-      indexModified: false,
-    });
-    expect(await readFile(join(inspection.qoderCwd, "tracked.txt"), "utf8")).toBe(
+    const inspection = await inspectTaskWorkspace(started.taskStatePath);
+    expect(inspection.workspace.changedFiles).toEqual(["tracked.txt"]);
+    expect(inspection.retryEligibility).toEqual({ current: true, blockers: [] });
+    expect(await readFile(join(inspection.workspace.cwd, "tracked.txt"), "utf8")).toBe(
       "partial-failed\n",
     );
+    const serialized = JSON.stringify(inspection);
+    expect(serialized).not.toContain('"statePath"');
+    expect(serialized).not.toContain('"worktreeRoot"');
+    expect(serialized).not.toContain('"qoderCwd"');
+    expect(serialized).not.toContain('"indexModified"');
+    expect(serialized).not.toContain('"phase"');
 
     await host.discard(started.taskStatePath);
   });
 
-  it("prepares a successor for disclosure without mutating Task lineage", async () => {
+  it("uses an opaque Task-owned preparation ID without mutating Task lineage", async () => {
     const source = await createFixture();
     const { host, started, failed } = await startFailedTask(source);
 
-    const prepared = await prepareSuccessorRetry(started.taskStatePath);
+    const prepared = await prepareSuccessorRetry(started.taskStatePath, {
+      createPreparationId: () => "prep-1",
+    });
     const afterPrepare = await host.get(started.taskStatePath);
     expect(afterPrepare.version).toBe(failed.task.version);
     expect(afterPrepare.worktreeSessions).toHaveLength(1);
-    expect(prepared.predecessorWorktreeSessionId).toBe("wt-1");
-    expect(await readFile(join(prepared.qoderCwd, "tracked.txt"), "utf8")).toBe("base\n");
+    expect(prepared.preparationId).toBe("prep-1");
+    expect(await readFile(join(prepared.workspace.cwd, "tracked.txt"), "utf8")).toBe("base\n");
+    expect(JSON.stringify(prepared)).not.toContain("StatePath");
 
-    await discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath);
-    await expect(access(prepared.preparedStatePath)).rejects.toBeDefined();
+    await discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId);
     await host.discard(started.taskStatePath);
   });
 
-  it("attaches and runs only the previously disclosed successor Worktree", async () => {
+  it("attaches and runs only the workspace bound to the approved preparation ID", async () => {
     const source = await createFixture();
     const { host, started } = await startFailedTask(source);
-    const prepared = await prepareSuccessorRetry(started.taskStatePath);
+    const prepared = await prepareSuccessorRetry(started.taskStatePath, {
+      createPreparationId: () => "prep-1",
+    });
     let runnerSaw = "";
     const bridgeDependencies: SkillBridgeDependencies = {
-      executeRunner: successfulPreparedRunner(async (cwd) => {
-        expect(cwd).toBe(prepared.qoderCwd);
-        runnerSaw = await readFile(join(cwd, "tracked.txt"), "utf8");
-      }),
+      executeRunner: async (parsed) => {
+        expect(parsed.cwd).toBe(prepared.workspace.cwd);
+        runnerSaw = await readFile(join(parsed.cwd, "tracked.txt"), "utf8");
+        await writeFile(join(parsed.cwd, "tracked.txt"), "successor-success\n");
+        return { envelope: envelope(parsed.cwd, "succeeded"), exitCode: 0 };
+      },
       createId: (prefix) => (prefix === "inv" ? "inv-successor" : "wt-successor"),
     };
 
     const retried = await runPreparedSuccessorRetry(
       started.taskStatePath,
-      prepared.preparedStatePath,
+      prepared.preparationId,
       runnerOptions(),
       undefined,
       bridgeDependencies,
@@ -176,7 +186,6 @@ describe("Skill task bridge", () => {
     expect(retried.task.worktreeSessions.at(-1)).toMatchObject({
       id: "wt-successor",
       predecessorId: "wt-1",
-      statePath: prepared.preparedStatePath,
     });
     expect(retried.task.invocations.at(-1)).toMatchObject({
       id: "inv-successor",
@@ -188,43 +197,51 @@ describe("Skill task bridge", () => {
     await host.discard(started.taskStatePath);
   });
 
-  it("rejects a prepared successor after Task state changes", async () => {
+  it("rejects stale preparation for execution but still allows explicit cleanup", async () => {
     const source = await createFixture();
     const { host, started } = await startFailedTask(source);
-    const prepared = await prepareSuccessorRetry(started.taskStatePath);
+    const prepared = await prepareSuccessorRetry(started.taskStatePath, {
+      createPreparationId: () => "prep-stale",
+    });
 
     await host.fail(started.taskStatePath);
     await expect(
-      runPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath, runnerOptions()),
+      runPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId, runnerOptions()),
     ).rejects.toMatchObject({ code: "retry_preparation_stale" });
+    await expect(
+      discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId),
+    ).resolves.toBeUndefined();
 
-    await disposeWorktree(prepared.preparedStatePath, true);
     const closed = await host.get(started.taskStatePath);
     await disposeWorktree(closed.worktreeSessions[0]!.statePath, true);
   });
 
-  it("rejects successor drift before the approved Runner invocation", async () => {
+  it("rejects prepared workspace drift before Runner execution", async () => {
     const source = await createFixture();
     const { host, started } = await startFailedTask(source);
-    const prepared = await prepareSuccessorRetry(started.taskStatePath);
-    await writeFile(join(prepared.qoderCwd, "tracked.txt"), "drifted-after-disclosure\n");
+    const prepared = await prepareSuccessorRetry(started.taskStatePath, {
+      createPreparationId: () => "prep-drift",
+    });
+    await writeFile(join(prepared.workspace.cwd, "tracked.txt"), "drifted-after-disclosure\n");
 
     await expect(
-      runPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath, runnerOptions()),
+      runPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId, runnerOptions()),
     ).rejects.toMatchObject({ code: "retry_preparation_changed" });
 
-    await writeFile(join(prepared.qoderCwd, "tracked.txt"), "base\n");
-    await discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath);
+    await writeFile(join(prepared.workspace.cwd, "tracked.txt"), "base\n");
+    await discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId);
     await host.discard(started.taskStatePath);
   });
 
-  it("preserves the Task lock when prepared-successor cleanup is ambiguous", async () => {
+  it("preserves the Task lock when prepared-workspace cleanup is ambiguous", async () => {
     const source = await createFixture();
     const { host, started } = await startFailedTask(source);
-    const prepared = await prepareSuccessorRetry(started.taskStatePath);
+    const prepared = await prepareSuccessorRetry(started.taskStatePath, {
+      createPreparationId: () => "prep-cleanup",
+    });
 
     await expect(
-      discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath, {
+      discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId, {
         disposeWorktree: async () => {
           throw new Error("simulated prepared cleanup failure");
         },
@@ -233,13 +250,41 @@ describe("Skill task bridge", () => {
     await expect(host.fail(started.taskStatePath)).rejects.toMatchObject({ code: "task_locked" });
 
     await unlink(`${started.taskStatePath}.lock`);
-    await discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath);
+    await discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId);
+    await host.discard(started.taskStatePath);
+  });
+
+  it("normal Task CLI results omit low-level Task and Runner mechanics", async () => {
+    const source = await createFixture();
+    const host = new EmbeddedTaskHost({
+      executeRunner: successfulRunner(),
+      createId: deterministicIds(),
+    });
+    const started = await host.start(source);
+    fixtures.push(started.taskRoot);
+
+    const inspected = await executeTaskCommand(["inspect", "--task", started.taskStatePath], {
+      host,
+    });
+    expect(JSON.stringify(inspected)).not.toContain('"statePath"');
+    expect(JSON.stringify(inspected)).not.toContain('"worktreeSessions"');
+
+    const ran = await executeTaskCommand(
+      ["run", "--task", started.taskStatePath, "--prompt", "do it"],
+      { host },
+    );
+    const serialized = JSON.stringify(ran);
+    expect(serialized).not.toContain('"cwd"');
+    expect(serialized).not.toContain('"executable"');
+    expect(serialized).not.toContain('"recovery"');
+    expect(serialized).not.toContain('"worktreeSessions"');
+
     await host.discard(started.taskStatePath);
   });
 });
 
 describe("Skill-facing Task CLI parsing", () => {
-  it("requires a disclosed prepared state for successor retry", () => {
+  it("uses policy strategies and opaque preparation IDs for retry", () => {
     expect(parseTaskArgs(["prepare-retry", "--task", "/tmp/task.json"])).toMatchObject({
       command: "prepare-retry",
     });
@@ -248,32 +293,33 @@ describe("Skill-facing Task CLI parsing", () => {
         "retry",
         "--task",
         "/tmp/task.json",
-        "--worktree",
-        "successor",
+        "--strategy",
+        "restart",
         "--prompt",
         "continue",
       ]),
-    ).toThrow(/--prepared-state/);
+    ).toThrow(/--preparation/);
     expect(
       parseTaskArgs([
         "retry",
         "--task",
         "/tmp/task.json",
-        "--worktree",
-        "successor",
-        "--prepared-state",
-        "/tmp/successor/session.json",
+        "--strategy",
+        "restart",
+        "--preparation",
+        "prep-1",
         "--prompt",
         "continue",
       ]),
     ).toMatchObject({
       command: "retry",
+      strategy: "restart",
       worktree: "successor",
-      preparedState: "/tmp/successor/session.json",
+      preparation: "prep-1",
     });
   });
 
-  it("keeps current retry simple and rejects Task-level recover", () => {
+  it("keeps the old worktree selector as a compatibility alias", () => {
     expect(
       parseTaskArgs([
         "retry",
@@ -284,20 +330,51 @@ describe("Skill-facing Task CLI parsing", () => {
         "--prompt",
         "continue",
       ]),
-    ).toMatchObject({ command: "retry", worktree: "current" });
+    ).toMatchObject({ command: "retry", strategy: "continue", worktree: "current" });
+  });
+
+  it("maps long-task policy without requiring manual timeout plumbing", () => {
+    expect(
+      parseTaskArgs([
+        "run",
+        "--task",
+        "/tmp/task.json",
+        "--prompt",
+        "long work",
+        "--long-task",
+      ]),
+    ).toMatchObject({
+      command: "run",
+      runner: { timeoutMs: "3600000" },
+    });
+    expect(() =>
+      parseTaskArgs([
+        "run",
+        "--task",
+        "/tmp/task.json",
+        "--prompt",
+        "long work",
+        "--long-task",
+        "--timeout-ms",
+        "123",
+      ]),
+    ).toThrow(/cannot be combined/);
+  });
+
+  it("rejects Task-level recover and raw prepared-state plumbing", () => {
+    expect(() => parseTaskArgs(["recover", "--task", "/tmp/task.json"])).toThrow(/Use start/);
     expect(() =>
       parseTaskArgs([
         "retry",
         "--task",
         "/tmp/task.json",
         "--worktree",
-        "current",
+        "successor",
         "--prepared-state",
-        "/tmp/unused/session.json",
+        "/tmp/session.json",
         "--prompt",
         "continue",
       ]),
-    ).toThrow(/successor retry/);
-    expect(() => parseTaskArgs(["recover", "--task", "/tmp/task.json"])).toThrow(/Use start/);
+    ).toThrow(/Unsupported/);
   });
 });
