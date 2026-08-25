@@ -149,6 +149,8 @@ export function startRepair(task: Task, input: { invocationId: string }): Task {
   taskAssert(task.activeCandidateId !== null, "candidate_missing", "repair requires an active candidate");
   const previous = lastInvocation(task);
   taskAssert(previous?.status === "succeeded", "repair_precondition", "repair requires a succeeded predecessor invocation");
+  const activeCandidate = task.candidates.find((item) => item.id === task.activeCandidateId);
+  taskAssert(activeCandidate?.producingInvocationId === previous.id, "repair_precondition", "active candidate must come from the repair predecessor");
   const worktreeSessionId = activeWorktreeId(task);
   taskAssert(previous.worktreeSessionId === worktreeSessionId, "repair_worktree_mismatch", "repair must reuse current worktree");
   assertUniqueId(task, input.invocationId);
@@ -178,6 +180,7 @@ export function startRetry(
   const previous = lastInvocation(task);
   taskAssert(previous?.status === "failed", "retry_precondition", "retry requires a failed predecessor invocation");
   const currentWorktreeId = activeWorktreeId(task);
+  taskAssert(previous.worktreeSessionId === currentWorktreeId, "retry_worktree_mismatch", "failed predecessor must belong to current worktree");
   assertUniqueId(task, input.invocationId);
 
   let invocationWorktreeId = currentWorktreeId;
