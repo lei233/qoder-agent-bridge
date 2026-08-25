@@ -1,44 +1,39 @@
 # Task-Aware Isolated Qoder Review
 
-Use the task-aware coordinator for every code-changing Qoder task in a Git
-worktree. The Task Host wraps the existing isolated Worktree and one-shot Runner
-mechanics; it does not change the Skill's review, approval, or retry policy.
+Use the task-aware coordinator for every code-changing Qoder task. The Task Host
+owns isolated workspace mechanics; this reference owns only Skill policy for
+review, correction, retry choice, approval, and acceptance.
 
 ## Lifecycle
 
 1. Record source `git status` and relevant diffs without altering the source.
-2. Run:
+2. Start the Task:
 
    ```sh
    node /path/to/qoder-agent/scripts/qoder_agent_task.mjs start \
-     --cwd <host-cwd>
+     --cwd <authorized-host-cwd>
    ```
 
-   where `<host-cwd>` is the Codex session's authorized directory, normally the
-   repository root. Record the returned `taskStatePath`.
+   Record `taskStatePath`.
 
-3. Inspect the active WorktreeSession before any external transfer:
+3. Inspect the Task-facing workspace:
 
    ```sh
    node /path/to/qoder-agent/scripts/qoder_agent_task.mjs inspect \
      --task <taskStatePath>
    ```
 
-   It returns the active WorktreeSession phase, `statePath`, `worktreeRoot`,
-   exact `qoderCwd`, changed files, index status, and
-   `includedIgnoredArtifacts`. The initial state must be `prepared`, with no
-   Qoder changes and no index modification.
+   Use `workspace.cwd`, `workspace.changedFiles`, `workspace.includedData`, and
+   `retryEligibility`. Do not depend on Worktree session paths, phases, index
+   flags, or retry-of links.
 
-4. A repository-root `.qoderinclude` can select locally available ignored files
-   as optional copied, unstaged check inputs. Missing matches are allowed. The
-   underlying Worktree v2 session validates its manifest digest and excludes
-   selected paths from Candidate patches. Inspect the returned manifest
-   information and explicitly disclose selected path categories, file count,
-   and bytes before Qoder receives them; configuration is not transfer
+4. Review `workspace.includedData` before external transfer. A repository
+   `.qoderinclude` may select ignored local inputs for checks; project
+   configuration is not authorization. Stop on credentials, secrets, unrelated
+   data, unsafe links, or excessive scope.
+5. Compile the delegation brief against `workspace.cwd`, preserve the narrower
+   `taskScope`, apply Brief Review when required, and obtain external-data
    authorization.
-5. Compile the delegation brief against the exact current `qoderCwd`, keep the
-   narrower `taskScope` separate, apply Brief Review when required, and obtain
-   external-data authorization before invoking Runner.
 6. Run the initial Invocation:
 
    ```sh
@@ -47,25 +42,19 @@ mechanics; it does not change the Skill's review, approval, or retry policy.
      --prompt-file <absolute-brief-path>
    ```
 
-   Wait for the command's final JSON result under `protocol.md`. A failed Runner
-   leaves the Task open and follows [Failed-Runner Retry](#failed-runner-retry).
-
-7. After a successful Invocation, freeze the exact review result:
+   Add `--long-task` only when the user explicitly classified this Invocation as
+   long running. Wait for the final Task JSON under `protocol.md`.
+7. After a successful Invocation, freeze the review result:
 
    ```sh
    node /path/to/qoder-agent/scripts/qoder_agent_task.mjs candidate \
      --task <taskStatePath>
    ```
 
-   This advances the underlying Worktree review state and creates a Task-owned,
-   immutable Candidate patch. Record its `candidate.id`, `patchPath`,
-   `patchSha256`, `baselineTree`, and `changedFiles`.
-
+   Record the Candidate ID, immutable patch path/hash, and changed files.
 8. Independently inspect the immutable Candidate patch and run relevant checks
-   in the active `qoderCwd`. Treat changes outside the brief's narrower
-   `taskScope` as out-of-scope even when they are inside `qoderCwd`. Candidate
-   identity is authoritative for the eventual apply: do not substitute a later
-   mutable worktree diff or another patch with similar content.
+   in `workspace.cwd`. Treat files outside `taskScope` as out of scope even when
+   they are inside the Task workspace.
 9. If the Candidate passes, present the evidence and wait for explicit user
    approval. Apply only the reviewed Candidate ID:
 
@@ -75,11 +64,6 @@ mechanics; it does not change the Skill's review, approval, or retry policy.
      --candidate <candidate-id>
    ```
 
-   The Host verifies the Task's active Candidate identity, immutable Candidate
-   SHA-256, and byte identity with the actual Worktree patch before the existing
-   Worktree apply path runs `git apply --check --binary` and modifies the source
-   without staging it.
-
 10. If the user explicitly discards the task, run:
 
     ```sh
@@ -87,28 +71,22 @@ mechanics; it does not change the Skill's review, approval, or retry policy.
       --task <taskStatePath>
     ```
 
-    The discarded terminal outcome is persisted before cleanup. If cleanup is
-    incomplete, report it; never reinterpret cleanup failure as an open Task.
-
-The underlying source may have unrelated staged or unstaged changes. Candidate
-application checks only the reviewed Qoder patch and preserves the source index.
-Every mutating Task command uses an exclusive fail-closed lock. If a command
-preserves a stale lock because an external side effect is mechanically
-ambiguous, stop and diagnose rather than replaying the operation.
+Task locking, Candidate identity verification, source apply preflight, workspace
+cleanup, and ambiguous-side-effect handling are Host-owned mechanics. If the
+Task CLI preserves a stale lock or reports an unknown result, stop rather than
+replaying the operation.
 
 ## Review Corrections
 
 The original explicit data-transfer authorization covers at most two automatic
-correction runs after the initial successful Runner execution when independent
-review finds only concrete, verifiable, in-scope defects and the objective,
-data categories, `hostCwd`, `qoderCwd`, and `taskScope` remain unchanged. Do not
-ask for conversational approval solely to start such an in-scope correction.
+same-scope correction runs after a successful Invocation when independent
+review finds only concrete, verifiable defects and all authorized data/scope
+facts remain unchanged.
 
 Prepare a distinct complete correction brief that reissues the original task
-plus review findings. Preserve the complete objective, required context,
-compiled rules, `taskScope`, acceptance criteria, verification, assumptions,
-and stop conditions. Direct Qoder to inspect and repair the existing
-uncommitted changes; never send a findings-only brief or rely on prior session
+plus review findings. Preserve objective, required context, compiled rules,
+`taskScope`, acceptance criteria, verification, assumptions, and stop
+conditions. Never send a findings-only brief or rely on prior Qoder session
 memory.
 
 Run:
@@ -119,168 +97,152 @@ node /path/to/qoder-agent/scripts/qoder_agent_task.mjs repair \
   --prompt-file <absolute-correction-brief>
 ```
 
-The Task Host validates that the previous Invocation succeeded and an active
-Candidate exists, invalidates that active Candidate, then reuses the same
-WorktreeSession and underlying review-reopen mechanics. Historical Candidate
-records remain immutable. After a successful repair, run `candidate` again;
-the replacement Candidate gets a new identity and is the only Candidate that
-may later be applied.
+The Host owns Candidate invalidation and reuse of the existing workspace. After
+a successful correction, run `candidate` again and review the replacement
+Candidate. Historical Candidate records remain immutable.
 
-Reapply Brief Review. Treat external transfer as already authorized only while
-all previously authorized fields remain unchanged: `required` uses Brief Review
-only, while a precise in-scope `auto` correction needs no preview. Stop without
-correction when a finding requires a material user decision, scope expansion,
-or a third correction run. Runner failure during correction follows the normal
-failure rules below, not the automatic correction allowance. Final Candidate
-application always requires explicit user approval.
+Reapply Brief Review when required. Stop without correction when a finding
+requires a material user decision, scope expansion, new data category, or a
+third correction run. A Runner failure during correction follows the failed-run
+policy below. Final Candidate application always requires explicit approval.
 
 ## Failed-Runner Retry
 
-A failed Runner does not close the Task and does not authorize another Qoder
-invocation. Wait until Runner and Qoder have ended, then inspect through the
-Task surface:
+A failed Invocation does not close the Task and does not authorize another
+Qoder invocation. Inspect again:
 
 ```sh
 node /path/to/qoder-agent/scripts/qoder_agent_task.mjs inspect \
   --task <taskStatePath>
 ```
 
-Continue only when:
+Before any retry:
 
-- `phase === "prepared"`;
-- `indexModified === false`;
-- every partial edit is explainable and inside `taskScope`;
-- the original task, baseline, required context, and acceptance criteria still
-  apply; and
-- no preserved stale Task lock or other ambiguous mechanical state exists.
+- explain every partial change in `workspace.changedFiles` and confirm it is in
+  `taskScope`;
+- confirm the original task, context, acceptance criteria, and host boundary
+  still apply;
+- require no preserved stale lock or other ambiguous mechanical result; and
+- obtain explicit retry-plus-transfer approval.
 
-Task Core does not decide whether partial work is trustworthy. Codex must choose
-one of the following strategies under the existing policy. No retry is automatic.
+Task Core does not decide whether failed partial work is trustworthy. Codex must
+choose one of the two policies below. No retry is automatic.
 
-### Retry the current WorktreeSession
+### Continue trustworthy partial work
 
-Use this only when the failed partial work is trustworthy enough to continue.
-Obtain explicit retry-plus-transfer approval, restating that the same
-Task-required private/project content under the same exact `qoderCwd` will be
-sent to Qoder. Resolve external prerequisites first and use a distinct complete
-retry brief. Change only the objective to make continuation explicit, for
-example:
+Use this only when `retryEligibility.current === true` **and** Codex has
+independently determined that the partial work is safe and useful to continue.
+`retryEligibility` is a mechanical gate, not an acceptance decision.
 
-```text
-Continue the interrupted bounded task from the existing uncommitted changes in
-this worktree. Inspect the current diff before editing and do not restart from
-scratch.
+Resolve external prerequisites first and prepare a distinct complete retry
+brief. State that Qoder should continue from the existing partial work, inspect
+it before editing, complete the bounded task, run relevant checks, and avoid
+prohibited Git operations.
 
-Repair incomplete or invalid edits, complete the task, and run the relevant
-checks. Do not commit, stage, stash, reset, clean, or modify Git worktree
-configuration.
-```
-
-Then run:
+After retry-plus-transfer approval:
 
 ```sh
 node /path/to/qoder-agent/scripts/qoder_agent_task.mjs retry \
   --task <taskStatePath> \
-  --worktree current \
+  --strategy continue \
   --prompt-file <absolute-retry-brief>
 ```
 
-A current retry reuses the active WorktreeSession and preserves its partial
-work. Stop if the same hard failure repeats. For the exact retryable
-`model_queue_exhausted` Runner code, allow at most one current retry. Do not
-broaden permissions or retry automatically.
+Stop if the same hard failure repeats. For the exact retryable
+`model_queue_exhausted` Runner error, allow at most one continue retry. Do not
+broaden permissions or infer safety merely from `retryable: true`.
 
-### Retry on a successor WorktreeSession
+### Restart in a replacement workspace
 
-Use a successor only for an explicitly chosen clean restart or when the failed
-partial work cannot be safely continued. Preparation is deliberately separate
-from Runner execution so the Skill can disclose the actual new mechanical
-boundary before external transfer.
+Use restart only when Codex explicitly chooses a clean restart or determines
+that failed partial work should not be continued.
 
-First prepare the successor locally:
+Prepare locally first:
 
 ```sh
 node /path/to/qoder-agent/scripts/qoder_agent_task.mjs prepare-retry \
   --task <taskStatePath>
 ```
 
-This does **not** mutate Task lineage or invoke Qoder. It returns
-`preparedStatePath`, exact successor `qoderCwd`, `worktreeRoot`, and
-`includedIgnoredArtifacts`, bound to the current `taskId`, `task.version`, and
-predecessor WorktreeSession. Inspect the returned data scope and obtain explicit
-retry-plus-transfer approval for this exact successor. Rebuild or re-present
-the brief when the new `qoderCwd` or included data changes any previewed field.
+This does not invoke Qoder or mutate Task Invocation/workspace history. It
+returns:
 
-If approved, run exactly that prepared successor:
+- an opaque `preparationId`;
+- the replacement `workspace.cwd`;
+- `workspace.includedData`; and
+- the Task version used for preparation.
+
+Use that exact Task-facing disclosure for Brief Review and retry-plus-transfer
+approval. Do not infer or expose the underlying Worktree session path.
+
+If approved, run:
 
 ```sh
 node /path/to/qoder-agent/scripts/qoder_agent_task.mjs retry \
   --task <taskStatePath> \
-  --worktree successor \
-  --prepared-state <preparedStatePath> \
+  --strategy restart \
+  --preparation <preparationId> \
   --prompt-file <absolute-retry-brief>
 ```
 
-The Host rejects the preparation if Task version or active predecessor changed,
-or if the prepared Worktree drifted before the run. Only the successful Task
-transition attaches the successor WorktreeSession and creates the retry
-Invocation.
+The Host rejects stale preparation IDs, Task-version changes, predecessor
+changes, or replacement-workspace drift before Runner execution.
 
-If the user cancels or does not authorize external transfer, dispose only the
-unattached prepared successor without closing the Task:
+If the user cancels or does not authorize transfer, dispose the unattached
+preparation without closing the Task:
 
 ```sh
 node /path/to/qoder-agent/scripts/qoder_agent_task.mjs discard-retry \
   --task <taskStatePath> \
-  --prepared-state <preparedStatePath>
+  --preparation <preparationId>
 ```
 
-Do not silently leave prepared successor sessions behind. If preparation
-cleanup itself fails or Task state changed so ownership cannot be proven, stop
-for diagnosis.
+A stale preparation is still explicitly cleanable when Task ownership can be
+proven. If cleanup itself is mechanically ambiguous, the Host preserves the
+Task lock and the Skill stops for diagnosis.
 
 After any successful retry, continue through `candidate`, independent checks,
 review, and explicit Candidate application. The Task-level concept is always
-`retry`; do not introduce or invoke a Task-level `recover` command.
+`retry`; never introduce or invoke `recover`.
 
 ## Terminal Failure
 
-A failed Invocation alone is not a terminal failed Task because review policy
-may still permit an explicit retry. Use `fail --task <taskStatePath>` only when
-Codex has intentionally concluded that the Task is terminally failed and no
-active Invocation or Candidate remains. Report retained Worktree resources
-separately; terminal outcome and resource cleanup are different facts.
+A failed Invocation alone is not a terminal failed Task because policy may still
+permit an explicit retry. Use:
+
+```sh
+node /path/to/qoder-agent/scripts/qoder_agent_task.mjs fail \
+  --task <taskStatePath>
+```
+
+only after Codex intentionally concludes that no retry or Candidate path
+remains. Report incomplete cleanup separately from the terminal Task outcome.
 
 ## Stop Conditions
 
 Stop rather than bypassing a condition when:
 
-- the source is not a Git worktree, has no `HEAD` commit, or has unmerged paths;
-- `.qoderinclude` selects credentials, secrets, unrelated content, unsafe
+- Task start rejects the source repository state;
+- included local data contains credentials, secrets, unrelated content, unsafe
   links, or excessive scope;
-- a Task inspection reports an unexpected Worktree phase or index modification;
-- Runner/Qoder may still be live, or a valid Task/Runner result cannot be
-  established;
-- a failed-Runner partial diff cannot be fully explained inside `taskScope`;
-- a prepared successor no longer matches the Task version or predecessor;
-- Candidate generation reports ambiguous Worktree side effects or no immutable
-  Candidate can be established;
-- the immutable Candidate patch hash or byte identity no longer matches apply
-  preconditions;
-- source changes make the underlying `git apply --check` fail;
-- source application may have happened but Task outcome persistence is
-  mechanically ambiguous; or
+- Task inspection or retry preparation reports a blocker that cannot be safely
+  resolved;
+- Runner/Qoder completion cannot be established from final Task evidence;
+- failed partial changes cannot be fully explained inside `taskScope`;
+- a retry preparation is stale or its disclosed workspace drifted;
+- Candidate generation cannot establish immutable Candidate identity;
+- Candidate application reports identity/preflight failure;
+- source application may have occurred but the Task outcome is mechanically
+  ambiguous; or
 - a stale Task lock is preserved for diagnosis.
 
-If apply returns `outcome: "applied"` with `cleanupIncomplete: true`, the source
-change and Task outcome are successful facts while cleanup is incomplete. Do
-not replay apply; report and diagnose cleanup separately.
+If apply returns Task outcome `applied` with `cleanupIncomplete: true`, treat the
+source change and Task outcome as successful facts and cleanup as separately
+incomplete. Never replay apply.
 
 ## Low-Level Compatibility
 
-`run_qoder.mjs` and `qoder_worktree.mjs` remain available as compatibility and
-diagnostic tools. The normal Skill workflow above must use Task commands so
-Task locking, Invocation lineage, immutable Candidate identity, and terminal
-outcomes remain authoritative. Never use low-level commands to bypass a Task
-precondition, stale lock, explicit approval, or an ambiguous external side
-effect.
+`run_qoder.mjs`, `qoder_worktree.mjs`, and full `task get` remain diagnostic
+surfaces. The normal Skill workflow must not depend on their Worktree paths,
+phases, index state, process details, or legacy recovery vocabulary. Never use a
+low-level command to bypass Task policy or a fail-closed result.
