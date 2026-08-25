@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   PROTOCOL_VERSION,
   RUNNER_VERSION,
+  disposeWorktree,
   type ParsedRunnerArgs,
   type RunnerEnvelope,
   type RunnerExecution,
@@ -189,13 +190,68 @@ describe("Skill task bridge", () => {
 
     await host.discard(started.taskStatePath);
   });
+
+  it("rejects a prepared successor after Task state changes", async () => {
+    const source = await createFixture();
+    const { host, started } = await startFailedTask(source);
+    const prepared = await prepareSuccessorRetry(started.taskStatePath);
+
+    await host.fail(started.taskStatePath);
+    await expect(
+      runPreparedSuccessorRetry(
+        started.taskStatePath,
+        prepared.preparedStatePath,
+        runnerOptions(),
+      ),
+    ).rejects.toMatchObject({ code: "retry_preparation_stale" });
+
+    await disposeWorktree(prepared.preparedStatePath, true);
+  });
+
+  it("rejects successor drift before the approved Runner invocation", async () => {
+    const source = await createFixture();
+    const { host, started } = await startFailedTask(source);
+    const prepared = await prepareSuccessorRetry(started.taskStatePath);
+    await writeFile(join(prepared.qoderCwd, "tracked.txt"), "drifted-after-disclosure\n");
+
+    await expect(
+      runPreparedSuccessorRetry(
+        started.taskStatePath,
+        prepared.preparedStatePath,
+        runnerOptions(),
+      ),
+    ).rejects.toMatchObject({ code: "retry_preparation_changed" });
+
+    await writeFile(join(prepared.qoderCwd, "tracked.txt"), "base\n");
+    await discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath);
+    await host.discard(started.taskStatePath);
+  });
+
+  it("preserves the Task lock when prepared-successor cleanup is ambiguous", async () => {
+    const source = await createFixture();
+    const { host, started } = await startFailedTask(source);
+    const prepared = await prepareSuccessorRetry(started.taskStatePath);
+
+    await expect(
+      discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath, {
+        disposeWorktree: async () => {
+          throw new Error("simulated prepared cleanup failure");
+        },
+      }),
+    ).rejects.toMatchObject({ code: "prepared_retry_cleanup_ambiguous" });
+    await expect(host.fail(started.taskStatePath)).rejects.toMatchObject({ code: "task_locked" });
+
+    await unlink(`${started.taskStatePath}.lock`);
+    await discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparedStatePath);
+    await host.discard(started.taskStatePath);
+  });
 });
 
 describe("Skill-facing Task CLI parsing", () => {
   it("requires a disclosed prepared state for successor retry", () => {
-    expect(
-      parseTaskArgs(["prepare-retry", "--task", "/tmp/task.json"]),
-    ).toMatchObject({ command: "prepare-retry" });
+    expect(parseTaskArgs(["prepare-retry", "--task", "/tmp/task.json"])).toMatchObject({
+      command: "prepare-retry",
+    });
     expect(() =>
       parseTaskArgs([
         "retry",
