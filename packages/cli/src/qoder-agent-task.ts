@@ -8,7 +8,7 @@ import {
   EmbeddedTaskHost,
   TaskHostError,
   discardPreparedSuccessorRetry,
-  inspectTaskWorktree,
+  inspectTaskWorkspace,
   normalizeHostError,
   prepareSuccessorRetry,
   runPreparedSuccessorRetry,
@@ -40,21 +40,23 @@ export type ParsedTaskArgs =
   | (ParsedBase & {
       command: "retry";
       task: string;
+      strategy: "continue";
       worktree: "current";
-      preparedState: undefined;
+      preparation: undefined;
       runner: TaskRunnerOptions;
     })
   | (ParsedBase & {
       command: "retry";
       task: string;
+      strategy: "restart";
       worktree: "successor";
-      preparedState: string;
+      preparation: string;
       runner: TaskRunnerOptions;
     })
   | (ParsedBase & {
       command: "discard-retry";
       task: string;
-      preparedState: string;
+      preparation: string;
     })
   | (ParsedBase & {
       command: "inspect" | "prepare-retry" | "candidate" | "discard" | "fail" | "get";
@@ -86,10 +88,12 @@ const VALUE_OPTIONS = new Set([
   "--model",
   "--timeout-ms",
   "--max-model-request-retries",
+  "--strategy",
   "--worktree",
-  "--prepared-state",
+  "--preparation",
   "--candidate",
 ]);
+const FLAG_OPTIONS = new Set(["--long-task"]);
 
 function isTaskCommand(value: string | undefined): value is TaskCommand {
   return value !== undefined && TASK_COMMANDS.includes(value as TaskCommand);
@@ -103,16 +107,27 @@ function requireValue(values: Record<string, string>, option: string): string {
   return value;
 }
 
-function rejectOptions(values: Record<string, string>, allowed: readonly string[]): void {
-  const allowedSet = new Set(allowed);
+function rejectOptions(
+  values: Record<string, string>,
+  flags: Set<string>,
+  allowedValues: readonly string[],
+  allowedFlags: readonly string[] = [],
+): void {
+  const allowedValueSet = new Set(allowedValues);
   for (const option of Object.keys(values)) {
-    if (!allowedSet.has(option)) {
+    if (!allowedValueSet.has(option)) {
       throw new TaskHostError("invalid_input", `${option} is not valid for this Task command.`);
+    }
+  }
+  const allowedFlagSet = new Set(allowedFlags);
+  for (const flag of flags) {
+    if (!allowedFlagSet.has(flag)) {
+      throw new TaskHostError("invalid_input", `${flag} is not valid for this Task command.`);
     }
   }
 }
 
-function runnerOptions(values: Record<string, string>): TaskRunnerOptions {
+function runnerOptions(values: Record<string, string>, flags: Set<string>): TaskRunnerOptions {
   const prompt = values["--prompt"];
   const promptFile = values["--prompt-file"];
   if ((prompt === undefined) === (promptFile === undefined)) {
@@ -132,14 +147,42 @@ function runnerOptions(values: Record<string, string>): TaskRunnerOptions {
   if (promptFile !== undefined && promptFile.trim() === "") {
     throw new TaskHostError("invalid_input", "--prompt-file must be non-empty.");
   }
+  if (flags.has("--long-task") && values["--timeout-ms"] !== undefined) {
+    throw new TaskHostError(
+      "invalid_input",
+      "--long-task cannot be combined with the low-level --timeout-ms override.",
+    );
+  }
   return {
     prompt,
     promptFile,
     qodercliPath: values["--qodercli-path"],
     model: values["--model"],
-    timeoutMs: values["--timeout-ms"],
+    timeoutMs: flags.has("--long-task") ? "3600000" : values["--timeout-ms"],
     maxModelRequestRetries: values["--max-model-request-retries"],
   };
+}
+
+function parseRetryStrategy(values: Record<string, string>): {
+  strategy: "continue" | "restart";
+  worktree: "current" | "successor";
+} {
+  const strategy = values["--strategy"];
+  const worktree = values["--worktree"];
+  if (strategy !== undefined && worktree !== undefined) {
+    throw new TaskHostError("invalid_input", "Use either --strategy or --worktree, not both.");
+  }
+  if (strategy === "continue") return { strategy, worktree: "current" };
+  if (strategy === "restart") return { strategy, worktree: "successor" };
+  if (strategy !== undefined) {
+    throw new TaskHostError("invalid_input", "--strategy must be either continue or restart.");
+  }
+  if (worktree === "current") return { strategy: "continue", worktree };
+  if (worktree === "successor") return { strategy: "restart", worktree };
+  if (worktree !== undefined) {
+    throw new TaskHostError("invalid_input", "--worktree must be either current or successor.");
+  }
+  throw new TaskHostError("invalid_input", "Retry requires --strategy continue or restart.");
 }
 
 export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
@@ -152,9 +195,20 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
   }
 
   const values: Record<string, string> = {};
+  const flags = new Set<string>();
   for (let index = 1; index < argv.length; index += 1) {
     const option = argv[index];
-    if (option === undefined || !VALUE_OPTIONS.has(option)) {
+    if (option === undefined) {
+      throw new TaskHostError("invalid_input", "Unsupported or misplaced Task argument.");
+    }
+    if (FLAG_OPTIONS.has(option)) {
+      if (flags.has(option)) {
+        throw new TaskHostError("invalid_input", `${option} was provided more than once.`);
+      }
+      flags.add(option);
+      continue;
+    }
+    if (!VALUE_OPTIONS.has(option)) {
       throw new TaskHostError("invalid_input", "Unsupported or misplaced Task argument.");
     }
     if (Object.hasOwn(values, option)) {
@@ -179,57 +233,61 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
   ] as const;
 
   if (command === "start") {
-    rejectOptions(values, ["--cwd"]);
+    rejectOptions(values, flags, ["--cwd"]);
     return { command, cwd: requireValue(values, "--cwd") };
   }
   if (command === "run" || command === "repair") {
-    rejectOptions(values, runnerFlags);
+    rejectOptions(values, flags, runnerFlags, ["--long-task"]);
     return {
       command,
       task: requireValue(values, "--task"),
-      runner: runnerOptions(values),
+      runner: runnerOptions(values, flags),
     };
   }
   if (command === "retry") {
-    rejectOptions(values, [...runnerFlags, "--worktree", "--prepared-state"]);
+    rejectOptions(
+      values,
+      flags,
+      [...runnerFlags, "--strategy", "--worktree", "--preparation"],
+      ["--long-task"],
+    );
     const task = requireValue(values, "--task");
-    const worktree = requireValue(values, "--worktree");
-    if (worktree === "current") {
-      if (values["--prepared-state"] !== undefined) {
+    const parsedStrategy = parseRetryStrategy(values);
+    if (parsedStrategy.strategy === "continue") {
+      if (values["--preparation"] !== undefined) {
         throw new TaskHostError(
           "invalid_input",
-          "--prepared-state is valid only for successor retry.",
+          "--preparation is valid only for restart retry.",
         );
       }
       return {
         command,
         task,
-        worktree,
-        preparedState: undefined,
-        runner: runnerOptions(values),
+        strategy: "continue",
+        worktree: "current",
+        preparation: undefined,
+        runner: runnerOptions(values, flags),
       };
     }
-    if (worktree === "successor") {
-      return {
-        command,
-        task,
-        worktree,
-        preparedState: requireValue(values, "--prepared-state"),
-        runner: runnerOptions(values),
-      };
-    }
-    throw new TaskHostError("invalid_input", "--worktree must be either current or successor.");
+    return {
+      command,
+      task,
+      strategy: "restart",
+      worktree: "successor",
+      preparation: requireValue(values, "--preparation"),
+      runner: runnerOptions(values, flags),
+    };
   }
   if (command === "discard-retry") {
-    rejectOptions(values, ["--task", "--prepared-state"]);
+    rejectOptions(values, flags, ["--task", "--preparation"]);
     return {
       command,
       task: requireValue(values, "--task"),
-      preparedState: requireValue(values, "--prepared-state"),
+      preparation: requireValue(values, "--preparation"),
     };
   }
   if (command === "apply") {
-    rejectOptions(values, ["--task", "--candidate"]);
+    rejectOptions(values, flags, ["--task", "--candidate"]);
     return {
       command,
       task: requireValue(values, "--task"),
@@ -237,7 +295,7 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
     };
   }
 
-  rejectOptions(values, ["--task"]);
+  rejectOptions(values, flags, ["--task"]);
   return { command, task: requireValue(values, "--task") };
 }
 
@@ -258,7 +316,7 @@ export async function executeTaskCommand(
     return { status: "succeeded", operation: "start", ...result };
   }
   if (parsed.command === "inspect") {
-    const result = await inspectTaskWorktree(parsed.task, bridgeDependencies);
+    const result = await inspectTaskWorkspace(parsed.task, bridgeDependencies);
     return { status: "succeeded", operation: "inspect", ...result };
   }
   if (parsed.command === "get") {
@@ -290,11 +348,11 @@ export async function executeTaskCommand(
   }
   if (parsed.command === "retry") {
     const result =
-      parsed.worktree === "current"
+      parsed.strategy === "continue"
         ? await host.retry(parsed.task, "current", parsed.runner, options.signal)
         : await runPreparedSuccessorRetry(
             parsed.task,
-            parsed.preparedState,
+            parsed.preparation,
             parsed.runner,
             options.signal,
             bridgeDependencies,
@@ -302,16 +360,16 @@ export async function executeTaskCommand(
     return {
       status: result.runner?.status === "succeeded" ? "succeeded" : "failed",
       operation: "retry",
-      worktree: parsed.worktree,
+      strategy: parsed.strategy,
       ...result,
     };
   }
   if (parsed.command === "discard-retry") {
-    await discardPreparedSuccessorRetry(parsed.task, parsed.preparedState, bridgeDependencies);
+    await discardPreparedSuccessorRetry(parsed.task, parsed.preparation, bridgeDependencies);
     return {
       status: "succeeded",
       operation: "discard-retry",
-      preparedState: parsed.preparedState,
+      preparationId: parsed.preparation,
     };
   }
   if (parsed.command === "apply") {
