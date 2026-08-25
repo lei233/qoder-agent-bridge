@@ -1,6 +1,6 @@
 ---
 name: qoder-worker
-description: Compatibility entry point for delegating bounded coding tasks to a locally installed Qoder CLI through the co-installed qoder-agent workflow. Use when Codex should invoke Qoder as an external coding worker, compile relevant project context and installed Skill rules into a self-contained task brief, and retain responsibility for task isolation, immutable Candidate review, safe application, and acceptance.
+description: Compatibility entry point for delegating bounded coding tasks to a locally installed Qoder CLI through the co-installed qoder-agent workflow. Use when Codex should invoke Qoder as an external coding worker, compile relevant project context and installed Skill rules into a self-contained task brief, and retain responsibility for Task isolation, immutable Candidate review, safe application, and acceptance.
 ---
 
 # Qoder Worker
@@ -18,7 +18,7 @@ authoritative workflow. In particular:
 
 - obtain its explicit external-service data authorization even when Brief
   Review is `off`;
-- use its Task-owned isolated worktree and context-compilation references when
+- use its isolated Task workspace and context-compilation references when
   triggered;
 - invoke its task-aware commands with narrowly scoped host approval;
 - preserve its explicit failed-Runner retry policy rather than retrying
