@@ -112,7 +112,10 @@ function activeWorktree(task: Task): WorktreeSessionRef {
   }
   const ref = task.worktreeSessions.find((item) => item.id === task.activeWorktreeSessionId);
   if (ref === undefined) {
-    throw new TaskHostError("invalid_task_state", "Active WorktreeSession reference does not resolve.");
+    throw new TaskHostError(
+      "invalid_task_state",
+      "Active WorktreeSession reference does not resolve.",
+    );
   }
   return ref;
 }
@@ -139,7 +142,11 @@ function ensurePrepared(session: WorktreeSession, operation: string): void {
 
 function candidateFiles(changedFiles: string[]): string[] {
   const canonical = [...new Set(changedFiles)].sort();
-  if (canonical.length === 0 || canonical.length !== changedFiles.length || canonical.some((path) => path.length === 0)) {
+  if (
+    canonical.length === 0 ||
+    canonical.length !== changedFiles.length ||
+    canonical.some((path) => path.length === 0)
+  ) {
     throw new TaskHostError(
       "invalid_candidate_artifact",
       "Worktree review did not produce a non-empty unique Candidate file set.",
@@ -165,16 +172,18 @@ export class EmbeddedTaskHost {
     this.#prepareWorktree = dependencies.prepareWorktree ?? prepareWorktree;
     this.#inspectWorktree = dependencies.inspectWorktree ?? inspectWorktree;
     this.#createReviewPatch = dependencies.createReviewPatch ?? createReviewPatch;
-    this.#reopenReviewWorktree = dependencies.reopenWorktree ?? reopenReviewWorktree;
+    this.#reopenReviewWorktree = dependencies.reopenReviewWorktree ?? reopenReviewWorktree;
     this.#applyReviewPatch = dependencies.applyReviewPatch ?? applyReviewPatch;
     this.#disposeWorktree = dependencies.disposeWorktree ?? disposeWorktree;
     this.#createTaskRoot = dependencies.createTaskRoot ?? createTaskRoot;
-    this.#createId =
-      dependencies.createId ?? ((prefix) => `${prefix}-${randomUUID()}`);
+    this.#createId = dependencies.createId ?? ((prefix) => `${prefix}-${randomUUID()}`);
     this.#now = dependencies.now ?? (() => new Date());
   }
 
-  async #withLock<T>(taskStatePath: string, operation: (store: TaskFileStore, lock: TaskLock) => Promise<T>): Promise<T> {
+  async #withLock<T>(
+    taskStatePath: string,
+    operation: (store: TaskFileStore, lock: TaskLock) => Promise<T>,
+  ): Promise<T> {
     const store = new TaskFileStore(taskStatePath);
     const lock = await acquireTaskLock(store.taskStatePath);
     try {
@@ -209,9 +218,8 @@ export class EmbeddedTaskHost {
     error: unknown,
   ): Promise<InvocationOperationResult> {
     const normalized = normalizeHostError(error);
-    let resultRef: string;
     try {
-      resultRef = await this.#writeInvocationArtifact(store, invocationId, {
+      const resultRef = await this.#writeInvocationArtifact(store, invocationId, {
         version: 1,
         invocationId,
         stage,
@@ -249,7 +257,7 @@ export class EmbeddedTaskHost {
     options: TaskRunnerOptions,
     signal?: AbortSignal,
   ): Promise<InvocationOperationResult> {
-    let execution;
+    let execution: Awaited<ReturnType<typeof executeRunner>>;
     try {
       execution = await this.#executeRunner(runnerArgs(qoderCwd, options), process.env, signal);
     } catch (error) {
@@ -261,9 +269,8 @@ export class EmbeddedTaskHost {
       );
     }
 
-    let resultRef: string;
     try {
-      resultRef = await this.#writeInvocationArtifact(store, invocationId, {
+      const resultRef = await this.#writeInvocationArtifact(store, invocationId, {
         version: 1,
         invocationId,
         stage: "runner",
@@ -500,6 +507,7 @@ export class EmbeddedTaskHost {
       try {
         successor = await this.#prepareWorktree(current.session.sourceCwd, currentRef.statePath);
         const successorStatePath = await realpath(successor.statePath);
+        const successorCwd = successor.worktreeCwd;
         if (successor.retryOf === null) {
           throw new TaskHostError(
             "invalid_worktree_lineage",
@@ -532,7 +540,7 @@ export class EmbeddedTaskHost {
           lock,
           running,
           invocationId,
-          (await this.#inspectWorktree(successorStatePath)).session.worktreeCwd,
+          successorCwd,
           options,
           signal,
         );
@@ -577,7 +585,10 @@ export class EmbeddedTaskHost {
         );
       }
       const currentPatchBytes = await readFile(inspection.session.reviewPatchPath);
-      if (!currentPatchBytes.equals(candidateBytes) || sha256(currentPatchBytes) !== candidate.patchSha256) {
+      if (
+        !currentPatchBytes.equals(candidateBytes) ||
+        sha256(currentPatchBytes) !== candidate.patchSha256
+      ) {
         throw new TaskHostError(
           "candidate_apply_mismatch",
           "The Worktree patch that would be applied is not byte-identical to the active Candidate.",
