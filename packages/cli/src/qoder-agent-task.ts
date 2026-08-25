@@ -4,7 +4,12 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROMPT_LIMIT_BYTES } from "@qoder-agent-bridge/core";
-import { EmbeddedTaskHost, TaskHostError, normalizeHostError, type TaskRunnerOptions } from "./task-host";
+import {
+  EmbeddedTaskHost,
+  TaskHostError,
+  normalizeHostError,
+  type TaskRunnerOptions,
+} from "./task-host";
 
 export type TaskCommand =
   | "start"
@@ -161,10 +166,7 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
     rejectOptions(values, [...runnerFlags, "--worktree"]);
     const worktree = requireValue(values, "--worktree");
     if (worktree !== "current" && worktree !== "successor") {
-      throw new TaskHostError(
-        "invalid_input",
-        "--worktree must be either current or successor.",
-      );
+      throw new TaskHostError("invalid_input", "--worktree must be either current or successor.");
     }
     return {
       command,
@@ -256,9 +258,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       }
     } catch (error) {
       const normalized = normalizeHostError(error);
-      process.stdout.write(
-        `${JSON.stringify({ status: "failed", error: normalized })}\n`,
-      );
+      process.stdout.write(`${JSON.stringify({ status: "failed", error: normalized })}\n`);
       process.exitCode = 1;
     }
   } finally {

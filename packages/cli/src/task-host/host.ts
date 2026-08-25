@@ -29,12 +29,7 @@ import {
 } from "@qoder-agent-bridge/core";
 import { TaskHostError, normalizeHostError } from "./errors";
 import { acquireTaskLock, type TaskLock } from "./lock";
-import {
-  TASK_CANDIDATE_DIR,
-  TASK_INVOCATION_DIR,
-  TaskFileStore,
-  createTaskRoot,
-} from "./store";
+import { TASK_CANDIDATE_DIR, TASK_INVOCATION_DIR, TaskFileStore, createTaskRoot } from "./store";
 
 export interface TaskRunnerOptions {
   prompt: string | undefined;
@@ -140,7 +135,10 @@ function activeWorktree(task: Task): WorktreeSessionRef {
 
 function activeCandidate(task: Task, candidateId: string): Candidate {
   if (task.activeCandidateId !== candidateId) {
-    throw new TaskHostError("candidate_not_active", "Requested Candidate is not the active Candidate.");
+    throw new TaskHostError(
+      "candidate_not_active",
+      "Requested Candidate is not the active Candidate.",
+    );
   }
   const candidate = task.candidates.find((item) => item.id === candidateId);
   if (candidate === undefined) {
@@ -410,7 +408,10 @@ export class EmbeddedTaskHost {
         );
       }
       if (!inspection.hasChanges) {
-        throw new TaskHostError("empty_candidate", "An empty Worktree patch does not produce a Candidate.");
+        throw new TaskHostError(
+          "empty_candidate",
+          "An empty Worktree patch does not produce a Candidate.",
+        );
       }
 
       const candidateId = this.#createId("candidate");
@@ -443,7 +444,10 @@ export class EmbeddedTaskHost {
         const changedFiles = candidateFiles(review.changedFiles);
         const patchBytes = await readFile(review.session.reviewPatchPath);
         if (patchBytes.length === 0) {
-          throw new TaskHostError("empty_candidate", "An empty Worktree patch does not produce a Candidate.");
+          throw new TaskHostError(
+            "empty_candidate",
+            "An empty Worktree patch does not produce a Candidate.",
+          );
         }
         const candidatePath = join(store.taskRoot, TASK_CANDIDATE_DIR, `${candidateId}.patch`);
         await mkdir(join(store.taskRoot, TASK_CANDIDATE_DIR), { recursive: true, mode: 0o700 });
@@ -625,7 +629,10 @@ export class EmbeddedTaskHost {
       const ref = activeWorktree(task);
       const inspection = await this.#inspectWorktree(ref.statePath);
       if (inspection.session.phase !== "review_ready") {
-        throw new TaskHostError("worktree_not_review_ready", "Apply requires a review-ready Worktree.");
+        throw new TaskHostError(
+          "worktree_not_review_ready",
+          "Apply requires a review-ready Worktree.",
+        );
       }
       if (inspection.session.baselineTree !== candidate.baselineTree) {
         throw new TaskHostError(

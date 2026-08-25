@@ -6,8 +6,8 @@
   "license": "MIT",
   "bin": {
     "qoder-agent-run": "./dist/run-qoder.js",
-    "qoder-agent-worktree": "./dist/qoder-worktree.js",
-    "qoder-agent-task": "./dist/qoder-agent-task.js"
+    "qoder-agent-task": "./dist/qoder-agent-task.js",
+    "qoder-agent-worktree": "./dist/qoder-worktree.js"
   },
   "files": [
     "dist"

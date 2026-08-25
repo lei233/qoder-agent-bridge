@@ -55,7 +55,10 @@ function validateInvocation(value: unknown, index: number): void {
   expectString(item.kind, `invocations[${index}].kind`);
   expectString(item.status, `invocations[${index}].status`);
   expectString(item.worktreeSessionId, `invocations[${index}].worktreeSessionId`);
-  expectNullableString(item.predecessorInvocationId, `invocations[${index}].predecessorInvocationId`);
+  expectNullableString(
+    item.predecessorInvocationId,
+    `invocations[${index}].predecessorInvocationId`,
+  );
   expectNullableString(item.resultRef, `invocations[${index}].resultRef`);
 }
 

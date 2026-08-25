@@ -30,9 +30,7 @@ function git(cwd: string, args: string[]) {
 }
 
 afterEach(async () => {
-  await Promise.all(
-    fixtures.splice(0).map((path) => rm(path, { recursive: true, force: true })),
-  );
+  await Promise.all(fixtures.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
 async function createFixture() {
@@ -67,8 +65,7 @@ function envelope(cwd: string, status: "succeeded" | "failed"): RunnerEnvelope {
     qoderOutput: { format: "json", raw: "" },
     retryable: false,
     recovery: null,
-    error:
-      status === "succeeded" ? undefined : { code: "fake_failure", message: "fake failure" },
+    error: status === "succeeded" ? undefined : { code: "fake_failure", message: "fake failure" },
   };
 }
 
@@ -310,7 +307,9 @@ describe("Embedded Task Host", () => {
       lifecycle: "open",
       activeCandidateId: frozen.candidate.id,
     });
-    await expect(host.discard(started.taskStatePath)).rejects.toMatchObject({ code: "task_locked" });
+    await expect(host.discard(started.taskStatePath)).rejects.toMatchObject({
+      code: "task_locked",
+    });
 
     await unlink(`${started.taskStatePath}.lock`);
     await host.discard(started.taskStatePath);
