@@ -258,6 +258,34 @@ describe("Embedded Task Host", () => {
     await host.discard(started.taskStatePath);
   });
 
+  it("preserves the Task lock when Worktree apply completion is ambiguous", async () => {
+    const source = await createFixture();
+    const host = new EmbeddedTaskHost({
+      executeRunner: runnerSequence(["succeeded"]),
+      createId: deterministicIds(),
+    });
+    const started = await startTracked(host, source);
+    await host.run(started.taskStatePath, runnerOptions());
+    const frozen = await host.candidate(started.taskStatePath);
+    const ambiguousHost = new EmbeddedTaskHost({
+      applyReviewPatch: async () => {
+        throw new Error("simulated post-apply state uncertainty");
+      },
+    });
+
+    await expect(ambiguousHost.apply(started.taskStatePath, frozen.candidate.id)).rejects.toMatchObject({
+      code: "apply_state_ambiguous",
+    });
+    await expect(host.get(started.taskStatePath)).resolves.toMatchObject({
+      lifecycle: "open",
+      activeCandidateId: frozen.candidate.id,
+    });
+    await expect(host.discard(started.taskStatePath)).rejects.toMatchObject({ code: "task_locked" });
+
+    await unlink(`${started.taskStatePath}.lock`);
+    await host.discard(started.taskStatePath);
+  });
+
   it("rejects concurrent and stale-lock mutations while allowing read-only get", async () => {
     const source = await createFixture();
     const host = new EmbeddedTaskHost({
