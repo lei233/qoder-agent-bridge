@@ -3,7 +3,11 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PROMPT_LIMIT_BYTES } from "@qoder-agent-bridge/core";
+import {
+  PROMPT_LIMIT_BYTES,
+  type RunnerEnvelope,
+  type Task,
+} from "@qoder-agent-bridge/core";
 import {
   EmbeddedTaskHost,
   TaskHostError,
@@ -12,7 +16,9 @@ import {
   normalizeHostError,
   prepareSuccessorRetry,
   runPreparedSuccessorRetry,
+  type InvocationOperationResult,
   type SkillBridgeDependencies,
+  type TaskResolutionResult,
   type TaskRunnerOptions,
 } from "./task-host";
 
@@ -185,6 +191,58 @@ function parseRetryStrategy(values: Record<string, string>): {
   throw new TaskHostError("invalid_input", "Retry requires --strategy continue or restart.");
 }
 
+function taskSummary(task: Task): Record<string, unknown> {
+  return {
+    id: task.id,
+    version: task.version,
+    lifecycle: task.lifecycle,
+    outcome: task.outcome,
+    operability: task.operability,
+    blockReason: task.blockReason,
+    activeInvocationId: task.activeInvocationId,
+    activeCandidateId: task.activeCandidateId,
+    appliedCandidateId: task.appliedCandidateId,
+  };
+}
+
+function runnerEvidence(runner: RunnerEnvelope | null): Record<string, unknown> | null {
+  if (runner === null) return null;
+  return {
+    protocolVersion: runner.protocolVersion,
+    runnerVersion: runner.runnerVersion,
+    status: runner.status,
+    exitCode: runner.exitCode,
+    signal: runner.signal,
+    durationMs: runner.durationMs,
+    timedOut: runner.timedOut,
+    retryable: runner.retryable,
+    stdout: runner.stdout,
+    stderr: runner.stderr,
+    stdoutTruncated: runner.stdoutTruncated,
+    stderrTruncated: runner.stderrTruncated,
+    qoderOutput: runner.qoderOutput,
+    error: runner.error,
+  };
+}
+
+function invocationEvidence(result: InvocationOperationResult): Record<string, unknown> {
+  return {
+    task: taskSummary(result.task),
+    invocationId: result.invocationId,
+    resultRef: result.resultRef,
+    runner: runnerEvidence(result.runner),
+    hostError: result.hostError,
+  };
+}
+
+function resolutionEvidence(result: TaskResolutionResult): Record<string, unknown> {
+  return {
+    task: taskSummary(result.task),
+    cleanupIncomplete: result.cleanupIncomplete,
+    cleanupIssues: result.cleanupIssues.map((issue) => ({ error: issue.error })),
+  };
+}
+
 export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
   const command = argv[0];
   if (!isTaskCommand(command)) {
@@ -313,11 +371,22 @@ export async function executeTaskCommand(
 
   if (parsed.command === "start") {
     const result = await host.start(parsed.cwd);
-    return { status: "succeeded", operation: "start", ...result };
+    return {
+      status: "succeeded",
+      operation: "start",
+      taskStatePath: result.taskStatePath,
+      task: taskSummary(result.task),
+    };
   }
   if (parsed.command === "inspect") {
     const result = await inspectTaskWorkspace(parsed.task, bridgeDependencies);
-    return { status: "succeeded", operation: "inspect", ...result };
+    return {
+      status: "succeeded",
+      operation: "inspect",
+      task: taskSummary(result.task),
+      workspace: result.workspace,
+      retryEligibility: result.retryEligibility,
+    };
   }
   if (parsed.command === "get") {
     return { status: "succeeded", operation: "get", task: await host.get(parsed.task) };
@@ -327,19 +396,24 @@ export async function executeTaskCommand(
     return {
       status: result.runner?.status === "succeeded" ? "succeeded" : "failed",
       operation: "run",
-      ...result,
+      ...invocationEvidence(result),
     };
   }
   if (parsed.command === "candidate") {
     const result = await host.candidate(parsed.task);
-    return { status: "succeeded", operation: "candidate", ...result };
+    return {
+      status: "succeeded",
+      operation: "candidate",
+      task: taskSummary(result.task),
+      candidate: result.candidate,
+    };
   }
   if (parsed.command === "repair") {
     const result = await host.repair(parsed.task, parsed.runner, options.signal);
     return {
       status: result.runner?.status === "succeeded" ? "succeeded" : "failed",
       operation: "repair",
-      ...result,
+      ...invocationEvidence(result),
     };
   }
   if (parsed.command === "prepare-retry") {
@@ -361,7 +435,7 @@ export async function executeTaskCommand(
       status: result.runner?.status === "succeeded" ? "succeeded" : "failed",
       operation: "retry",
       strategy: parsed.strategy,
-      ...result,
+      ...invocationEvidence(result),
     };
   }
   if (parsed.command === "discard-retry") {
@@ -374,14 +448,14 @@ export async function executeTaskCommand(
   }
   if (parsed.command === "apply") {
     const result = await host.apply(parsed.task, parsed.candidate);
-    return { status: "succeeded", operation: "apply", ...result };
+    return { status: "succeeded", operation: "apply", ...resolutionEvidence(result) };
   }
   if (parsed.command === "discard") {
     const result = await host.discard(parsed.task);
-    return { status: "succeeded", operation: "discard", ...result };
+    return { status: "succeeded", operation: "discard", ...resolutionEvidence(result) };
   }
   const result = await host.fail(parsed.task);
-  return { status: "succeeded", operation: "fail", ...result };
+  return { status: "succeeded", operation: "fail", ...resolutionEvidence(result) };
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
