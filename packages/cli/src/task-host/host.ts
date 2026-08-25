@@ -395,6 +395,20 @@ export class EmbeddedTaskHost {
         throw new TaskHostError("empty_candidate", "An empty Worktree patch does not produce a Candidate.");
       }
 
+      const candidateId = this.#createId("candidate");
+      const createdAt = this.#now().toISOString();
+      const producingInvocationId = task.invocations.at(-1)?.id ?? "";
+      freezeCandidate(task, {
+        id: candidateId,
+        producingInvocationId,
+        worktreeSessionId: ref.id,
+        baselineTree: inspection.session.baselineTree,
+        patchPath: "task-host-domain-preflight.patch",
+        patchSha256: "task-host-domain-preflight",
+        changedFiles: ["task-host-domain-preflight"],
+        createdAt,
+      });
+
       const review = await this.#createReviewPatch(ref.statePath);
       try {
         const changedFiles = candidateFiles(review.changedFiles);
@@ -402,7 +416,6 @@ export class EmbeddedTaskHost {
         if (patchBytes.length === 0) {
           throw new TaskHostError("empty_candidate", "An empty Worktree patch does not produce a Candidate.");
         }
-        const candidateId = this.#createId("candidate");
         const candidatePath = join(store.taskRoot, TASK_CANDIDATE_DIR, `${candidateId}.patch`);
         await mkdir(join(store.taskRoot, TASK_CANDIDATE_DIR), { recursive: true, mode: 0o700 });
         await writeFile(candidatePath, patchBytes, { mode: 0o600, flag: "wx" });
@@ -415,13 +428,13 @@ export class EmbeddedTaskHost {
         }
         const candidate: Candidate = {
           id: candidateId,
-          producingInvocationId: task.invocations.at(-1)?.id ?? "",
+          producingInvocationId,
           worktreeSessionId: ref.id,
           baselineTree: review.session.baselineTree,
           patchPath: candidatePath,
           patchSha256: sha256(frozenBytes),
           changedFiles,
-          createdAt: this.#now().toISOString(),
+          createdAt,
         };
         const frozen = freezeCandidate(task, candidate);
         await store.save(frozen);
@@ -503,6 +516,11 @@ export class EmbeddedTaskHost {
         );
       }
 
+      startRetry(task, {
+        invocationId,
+        worktree: { type: "current" },
+      });
+
       let successor: WorktreeSession | null = null;
       try {
         successor = await this.#prepareWorktree(current.session.sourceCwd, currentRef.statePath);
@@ -565,6 +583,7 @@ export class EmbeddedTaskHost {
   async apply(taskStatePath: string, candidateId: string): Promise<TaskResolutionResult> {
     return this.#withLock(taskStatePath, async (store, lock) => {
       const task = await store.load();
+      const resolved = resolveApplied(task, candidateId);
       const candidate = activeCandidate(task, candidateId);
       const ref = activeWorktree(task);
       const inspection = await this.#inspectWorktree(ref.statePath);
@@ -606,7 +625,6 @@ export class EmbeddedTaskHost {
       }
 
       try {
-        const resolved = resolveApplied(task, candidateId);
         await store.save(resolved);
         return {
           task: resolved,
