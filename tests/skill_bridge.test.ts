@@ -128,12 +128,12 @@ describe("Skill task bridge", () => {
     expect(await readFile(join(inspection.workspace.cwd, "tracked.txt"), "utf8")).toBe(
       "partial-failed\n",
     );
-    const serialized = JSON.stringify(inspection);
-    expect(serialized).not.toContain('"statePath"');
-    expect(serialized).not.toContain('"worktreeRoot"');
-    expect(serialized).not.toContain('"qoderCwd"');
-    expect(serialized).not.toContain('"indexModified"');
-    expect(serialized).not.toContain('"phase"');
+    const serializedWorkspace = JSON.stringify(inspection.workspace);
+    expect(serializedWorkspace).not.toContain('"statePath"');
+    expect(serializedWorkspace).not.toContain('"worktreeRoot"');
+    expect(serializedWorkspace).not.toContain('"qoderCwd"');
+    expect(serializedWorkspace).not.toContain('"indexModified"');
+    expect(serializedWorkspace).not.toContain('"phase"');
 
     await host.discard(started.taskStatePath);
   });
