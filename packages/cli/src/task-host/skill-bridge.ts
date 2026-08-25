@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   disposeWorktree,
   executeRunner,
@@ -238,7 +238,7 @@ async function validatePreparationOwnership(
   metadata: PreparedRetryMetadata;
 }> {
   const metadata = await readPreparedRetryMetadata(store, preparationId);
-  if (resolve(metadata.taskStatePath) !== resolve(store.taskStatePath)) {
+  if ((await realpath(metadata.taskStatePath)) !== (await realpath(store.taskStatePath))) {
     throw new TaskHostError(
       "retry_preparation_mismatch",
       "Prepared successor retry belongs to a different Task state file.",
@@ -257,7 +257,7 @@ async function validatePreparationOwnership(
   );
   if (
     predecessorRef === undefined ||
-    resolve(predecessorRef.statePath) !== resolve(metadata.predecessorStatePath)
+    (await realpath(predecessorRef.statePath)) !== (await realpath(metadata.predecessorStatePath))
   ) {
     throw new TaskHostError(
       "retry_preparation_mismatch",
@@ -266,7 +266,10 @@ async function validatePreparationOwnership(
   }
 
   const successor = await inspect(metadata.successorStatePath);
-  if (resolve(successor.session.statePath) !== resolve(metadata.successorStatePath)) {
+  if (
+    (await realpath(successor.session.statePath)) !==
+    (await realpath(metadata.successorStatePath))
+  ) {
     throw new TaskHostError(
       "retry_preparation_mismatch",
       "Prepared successor retry state does not match its Task-owned metadata.",
@@ -274,7 +277,8 @@ async function validatePreparationOwnership(
   }
   if (
     successor.session.retryOf === null ||
-    resolve(successor.session.retryOf) !== resolve(metadata.predecessorStatePath)
+    (await realpath(successor.session.retryOf)) !==
+      (await realpath(metadata.predecessorStatePath))
   ) {
     throw new TaskHostError(
       "invalid_worktree_lineage",
@@ -433,7 +437,7 @@ export async function prepareSuccessorRetry(
     const successorStatePath = await realpath(successor.statePath);
     if (
       successor.retryOf === null ||
-      resolve(successor.retryOf) !== resolve(predecessorStatePath)
+      (await realpath(successor.retryOf)) !== predecessorStatePath
     ) {
       throw new TaskHostError(
         "invalid_worktree_lineage",
