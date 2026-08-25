@@ -130,8 +130,12 @@ describe("Task Core", () => {
   it("rejects empty, duplicate, and non-canonical candidate changedFiles", () => {
     const task = successfulInitial();
     expect(() => freezeCandidate(task, { ...candidate(), changedFiles: [] })).toThrow(/non-empty/);
-    expect(() => freezeCandidate(task, { ...candidate(), changedFiles: ["a.ts", "a.ts"] })).toThrow(/unique/);
-    expect(() => freezeCandidate(task, { ...candidate(), changedFiles: ["b.ts", "a.ts"] })).toThrow(/canonically ordered/);
+    expect(() => freezeCandidate(task, { ...candidate(), changedFiles: ["a.ts", "a.ts"] })).toThrow(
+      /unique/,
+    );
+    expect(() => freezeCandidate(task, { ...candidate(), changedFiles: ["b.ts", "a.ts"] })).toThrow(
+      /canonically ordered/,
+    );
   });
 
   it("starts repair only after success with an active candidate and clears it", () => {
@@ -145,7 +149,9 @@ describe("Task Core", () => {
       worktreeSessionId: "wt-1",
     });
     expect(repaired.candidates).toHaveLength(1);
-    expect(() => startRepair(successfulInitial(), { invocationId: "inv-2" })).toThrow(/active candidate/);
+    expect(() => startRepair(successfulInitial(), { invocationId: "inv-2" })).toThrow(
+      /active candidate/,
+    );
   });
 
   it("retries a failed invocation on the current worktree without appending a session", () => {
@@ -229,7 +235,10 @@ describe("Task Core", () => {
   it("blocks and unblocks only an idle open task", () => {
     const task = bootstrap();
     const blocked = blockTask(task, "manual diagnosis required");
-    expect(blocked).toMatchObject({ operability: "blocked", blockReason: "manual diagnosis required" });
+    expect(blocked).toMatchObject({
+      operability: "blocked",
+      blockReason: "manual diagnosis required",
+    });
     expect(() => startInitial(blocked, { invocationId: "inv-1" })).toThrow(/blocked/);
     const normal = unblockTask(blocked);
     expect(normal).toMatchObject({ operability: "normal", blockReason: null });
@@ -262,14 +271,20 @@ describe("Task Core", () => {
     const valid = successfulInitial();
     const brokenInvocation = structuredClone(valid) as Task;
     brokenInvocation.invocations[0]!.kind = "retry";
-    expect(() => assertTaskInvariants(brokenInvocation)).toThrow(/first invocation must be initial/);
+    expect(() => assertTaskInvariants(brokenInvocation)).toThrow(
+      /first invocation must be initial/,
+    );
 
     const brokenWorktree = structuredClone(valid) as Task;
     brokenWorktree.activeWorktreeSessionId = "missing";
     expect(() => assertTaskInvariants(brokenWorktree)).toThrow(/lineage tip/);
 
-    const runningWithoutActive = structuredClone(startInitial(bootstrap(), { invocationId: "inv-1" })) as Task;
+    const runningWithoutActive = structuredClone(
+      startInitial(bootstrap(), { invocationId: "inv-1" }),
+    ) as Task;
     runningWithoutActive.activeInvocationId = null;
-    expect(() => assertTaskInvariants(runningWithoutActive)).toThrow(/running invocation must be active/);
+    expect(() => assertTaskInvariants(runningWithoutActive)).toThrow(
+      /running invocation must be active/,
+    );
   });
 });

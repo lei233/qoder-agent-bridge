@@ -10,7 +10,11 @@ function assertUnique(values: string[], field: string) {
 }
 
 export function assertCanonicalChangedFiles(changedFiles: string[]) {
-  taskAssert(changedFiles.length > 0, "invalid_candidate", "candidate changedFiles must be non-empty");
+  taskAssert(
+    changedFiles.length > 0,
+    "invalid_candidate",
+    "candidate changedFiles must be non-empty",
+  );
   for (const path of changedFiles) {
     assertNonEmpty(path, "candidate changedFiles entry");
   }
@@ -35,7 +39,11 @@ function assertCandidateShape(candidate: Candidate) {
 }
 
 export function assertTaskInvariants(task: Task): void {
-  taskAssert(task.schemaVersion === TASK_SCHEMA_VERSION, "invalid_task", "unsupported task schemaVersion");
+  taskAssert(
+    task.schemaVersion === TASK_SCHEMA_VERSION,
+    "invalid_task",
+    "unsupported task schemaVersion",
+  );
   assertNonEmpty(task.id, "task id");
   taskAssert(
     Number.isSafeInteger(task.version) && task.version >= 0,
@@ -43,8 +51,16 @@ export function assertTaskInvariants(task: Task): void {
     "task version must be a non-negative safe integer",
   );
 
-  taskAssert(task.lifecycle === "open" || task.lifecycle === "closed", "invalid_task", "invalid lifecycle");
-  taskAssert(task.operability === "normal" || task.operability === "blocked", "invalid_task", "invalid operability");
+  taskAssert(
+    task.lifecycle === "open" || task.lifecycle === "closed",
+    "invalid_task",
+    "invalid lifecycle",
+  );
+  taskAssert(
+    task.operability === "normal" || task.operability === "blocked",
+    "invalid_task",
+    "invalid operability",
+  );
   taskAssert(
     task.outcome === null ||
       task.outcome === "applied" ||
@@ -95,7 +111,10 @@ export function assertTaskInvariants(task: Task): void {
       );
     }
   }
-  assertUnique(task.worktreeSessions.map((item) => item.statePath), "worktree session state paths");
+  assertUnique(
+    task.worktreeSessions.map((item) => item.statePath),
+    "worktree session state paths",
+  );
 
   for (const [index, invocation] of task.invocations.entries()) {
     assertNonEmpty(invocation.id, "invocation id");
@@ -136,7 +155,11 @@ export function assertTaskInvariants(task: Task): void {
 
     const previous = task.invocations[index - 1];
     taskAssert(previous !== undefined, "invalid_task", "invocation predecessor must exist");
-    taskAssert(invocation.kind !== "initial", "invalid_task", "only the first invocation may be initial");
+    taskAssert(
+      invocation.kind !== "initial",
+      "invalid_task",
+      "only the first invocation may be initial",
+    );
     taskAssert(
       invocation.predecessorInvocationId === previous.id,
       "invalid_task",
@@ -144,7 +167,11 @@ export function assertTaskInvariants(task: Task): void {
     );
 
     if (invocation.kind === "repair") {
-      taskAssert(previous.status === "succeeded", "invalid_task", "repair predecessor must have succeeded");
+      taskAssert(
+        previous.status === "succeeded",
+        "invalid_task",
+        "repair predecessor must have succeeded",
+      );
       taskAssert(
         invocation.worktreeSessionId === previous.worktreeSessionId,
         "invalid_task",
@@ -156,7 +183,11 @@ export function assertTaskInvariants(task: Task): void {
         "repair predecessor must have produced a candidate",
       );
     } else {
-      taskAssert(previous.status === "failed", "invalid_task", "retry predecessor must have failed");
+      taskAssert(
+        previous.status === "failed",
+        "invalid_task",
+        "retry predecessor must have failed",
+      );
       const sameWorktree = invocation.worktreeSessionId === previous.worktreeSessionId;
       const previousWorktreeIndex = task.worktreeSessions.findIndex(
         (session) => session.id === previous.worktreeSessionId,
@@ -176,7 +207,11 @@ export function assertTaskInvariants(task: Task): void {
   for (let index = 1; index < task.worktreeSessions.length; index += 1) {
     const session = task.worktreeSessions[index];
     const predecessor = task.worktreeSessions[index - 1];
-    taskAssert(session !== undefined && predecessor !== undefined, "invalid_task", "worktree lineage is incomplete");
+    taskAssert(
+      session !== undefined && predecessor !== undefined,
+      "invalid_task",
+      "worktree lineage is incomplete",
+    );
     taskAssert(
       task.invocations.some(
         (invocation, invocationIndex) =>
@@ -190,7 +225,11 @@ export function assertTaskInvariants(task: Task): void {
   }
 
   const running = task.invocations.filter((item) => item.status === "running");
-  taskAssert(running.length <= 1, "invalid_task", "task may contain at most one running invocation");
+  taskAssert(
+    running.length <= 1,
+    "invalid_task",
+    "task may contain at most one running invocation",
+  );
   if (task.activeInvocationId === null) {
     taskAssert(running.length === 0, "invalid_task", "running invocation must be active");
   } else {
@@ -207,7 +246,11 @@ export function assertTaskInvariants(task: Task): void {
       "invalid_task",
       "bootstrap task cannot have an active worktree session",
     );
-    taskAssert(task.invocations.length === 0, "invalid_task", "invocation requires a worktree session");
+    taskAssert(
+      task.invocations.length === 0,
+      "invalid_task",
+      "invocation requires a worktree session",
+    );
   } else {
     taskAssert(
       task.activeWorktreeSessionId === task.worktreeSessions.at(-1)?.id,
