@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFile, rm, unlink, writeFile, mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,6 +7,8 @@ import {
   PROTOCOL_VERSION,
   RUNNER_VERSION,
   WorktreeError,
+  blockTask,
+  inspectWorktree,
   type ParsedRunnerArgs,
   type RunnerEnvelope,
   type RunnerExecution,
@@ -14,6 +16,7 @@ import {
 import { parseTaskArgs } from "../packages/cli/src/qoder-agent-task";
 import {
   EmbeddedTaskHost,
+  TaskFileStore,
   acquireTaskLock,
   type EmbeddedTaskHostDependencies,
 } from "../packages/cli/src/task-host";
@@ -25,7 +28,9 @@ function git(cwd: string, args: string[]) {
 }
 
 afterEach(async () => {
-  await Promise.all(fixtures.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await Promise.all(
+    fixtures.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
 });
 
 async function createFixture() {
@@ -60,11 +65,12 @@ function envelope(cwd: string, status: "succeeded" | "failed"): RunnerEnvelope {
     qoderOutput: { format: "json", raw: "" },
     retryable: false,
     recovery: null,
-    error: status === "succeeded" ? undefined : { code: "fake_failure", message: "fake failure" },
+    error:
+      status === "succeeded" ? undefined : { code: "fake_failure", message: "fake failure" },
   };
 }
 
-function deterministicIds(): EmbeddedTaskHostDependencies["createId"] {
+function deterministicIds(): NonNullable<EmbeddedTaskHostDependencies["createId"]> {
   const counters = new Map<string, number>();
   return (prefix) => {
     const next = (counters.get(prefix) ?? 0) + 1;
@@ -123,8 +129,14 @@ describe("Embedded Task Host", () => {
     expect(first.candidate.changedFiles).toEqual(["tracked.txt"]);
 
     const repaired = await host.repair(started.taskStatePath, runnerOptions());
-    expect(repaired.task.invocations.at(-1)).toMatchObject({ kind: "repair", status: "succeeded" });
+    expect(repaired.task.invocations.at(-1)).toMatchObject({
+      kind: "repair",
+      status: "succeeded",
+    });
     expect(repaired.task.activeCandidateId).toBeNull();
+    expect(repaired.resultRef).not.toBe(initial.resultRef);
+    expect(await readFile(initial.resultRef, "utf8")).toContain('"invocationId": "inv-1"');
+    expect(await readFile(repaired.resultRef, "utf8")).toContain('"invocationId": "inv-2"');
 
     const second = await host.candidate(started.taskStatePath);
     expect(second.candidate.id).not.toBe(first.candidate.id);
@@ -138,6 +150,24 @@ describe("Embedded Task Host", () => {
       appliedCandidateId: second.candidate.id,
     });
     expect(await readFile(join(source, "tracked.txt"), "utf8")).toBe("run-2\n");
+  });
+
+  it("rejects Candidate freeze before Worktree review when the Invocation failed", async () => {
+    const source = await createFixture();
+    const host = new EmbeddedTaskHost({
+      executeRunner: runnerSequence(["failed"]),
+      createId: deterministicIds(),
+    });
+    const started = await startTracked(host, source);
+    const failed = await host.run(started.taskStatePath, runnerOptions());
+    const statePath = failed.task.worktreeSessions[0]?.statePath;
+    expect(statePath).toBeDefined();
+
+    await expect(host.candidate(started.taskStatePath)).rejects.toThrow(/must have succeeded/);
+    const inspection = await inspectWorktree(statePath!);
+    expect(inspection.session.phase).toBe("prepared");
+
+    await host.discard(started.taskStatePath);
   });
 
   it("retries a failed Invocation on the current WorktreeSession", async () => {
@@ -162,6 +192,7 @@ describe("Embedded Task Host", () => {
     expect(retried.task.invocations.at(-1)).toMatchObject({ kind: "retry", status: "succeeded" });
     const candidate = await host.candidate(started.taskStatePath);
     expect(candidate.candidate.changedFiles).toEqual(["tracked.txt"]);
+    await host.discard(started.taskStatePath);
   });
 
   it("retries on an immediate successor without carrying failed partial work", async () => {
@@ -187,6 +218,44 @@ describe("Embedded Task Host", () => {
       worktreeSessionId: "wt-2",
       status: "succeeded",
     });
+    await host.discard(started.taskStatePath);
+  });
+
+  it("validates Task apply authorization before modifying the source", async () => {
+    const source = await createFixture();
+    const host = new EmbeddedTaskHost({
+      executeRunner: runnerSequence(["succeeded"]),
+      createId: deterministicIds(),
+    });
+    const started = await startTracked(host, source);
+    await host.run(started.taskStatePath, runnerOptions());
+    const frozen = await host.candidate(started.taskStatePath);
+
+    const store = new TaskFileStore(started.taskStatePath);
+    await store.save(blockTask(frozen.task, "manual diagnosis"));
+    await expect(host.apply(started.taskStatePath, frozen.candidate.id)).rejects.toThrow(/blocked/);
+    expect(await readFile(join(source, "tracked.txt"), "utf8")).toBe("base\n");
+
+    await host.discard(started.taskStatePath);
+  });
+
+  it("rejects a changed immutable Candidate artifact before source apply", async () => {
+    const source = await createFixture();
+    const host = new EmbeddedTaskHost({
+      executeRunner: runnerSequence(["succeeded"]),
+      createId: deterministicIds(),
+    });
+    const started = await startTracked(host, source);
+    await host.run(started.taskStatePath, runnerOptions());
+    const frozen = await host.candidate(started.taskStatePath);
+    await writeFile(frozen.candidate.patchPath, "tampered\n");
+
+    await expect(host.apply(started.taskStatePath, frozen.candidate.id)).rejects.toMatchObject({
+      code: "candidate_artifact_changed",
+    });
+    expect(await readFile(join(source, "tracked.txt"), "utf8")).toBe("base\n");
+
+    await host.discard(started.taskStatePath);
   });
 
   it("rejects concurrent and stale-lock mutations while allowing read-only get", async () => {
@@ -209,6 +278,7 @@ describe("Embedded Task Host", () => {
     });
     await expect(host.get(started.taskStatePath)).resolves.toMatchObject({ lifecycle: "open" });
     await unlink(`${started.taskStatePath}.lock`);
+    await host.discard(started.taskStatePath);
   });
 
   it("persists discard before reporting cleanup failure", async () => {
