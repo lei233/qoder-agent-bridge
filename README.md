@@ -116,11 +116,12 @@ node skill/qoder-agent/scripts/qoder_agent_task.mjs run \
   --prompt-file /absolute/path/to/delegation-brief.md
 ```
 
-Every Task-managed Runner Invocation uses the same one-hour safety ceiling. The
-Task CLI does not expose a long-task mode or a manual timeout option. When a
-user explicitly identifies an Invocation as long running, only Codex's terminal
-blocking-wait policy changes so the same Task CLI call stays logically blocked
-instead of becoming a background polling workflow. See `protocol.md` below.
+Every Task-managed Runner Invocation is pinned to the Runner's existing one-hour
+maximum safety ceiling. The Task CLI exposes neither a long-task mode nor a
+manual timeout option. When a user explicitly identifies an Invocation as long
+running, only Codex's terminal blocking-wait policy changes so the same Task CLI
+call stays logically blocked instead of becoming a background polling workflow.
+See `protocol.md` below.
 
 After a successful Invocation, freeze an immutable Candidate:
 
