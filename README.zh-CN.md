@@ -107,10 +107,11 @@ node skill/qoder-agent/scripts/qoder_agent_task.mjs run \
   --prompt-file /absolute/path/to/delegation-brief.md
 ```
 
-所有 Task-managed Runner Invocation 都使用同一个 1 小时安全上限。Task CLI 不再提供
-长任务模式，也不提供手工 timeout 参数。只有当用户显式说明某个 Invocation 是长任务
-时，Codex 才改变终端工具的阻塞等待策略，让同一个 Task CLI 调用持续保持逻辑阻塞，
-而不是转成后台轮询工作流。具体等待契约见下文的 `protocol.md`。
+所有 Task-managed Runner Invocation 都固定使用 Runner 已有的 1 小时最大安全上限。
+Task CLI 不再提供长任务模式，也不提供手工 timeout 参数。只有当用户显式说明某个
+Invocation 是长任务时，Codex 才改变终端工具的阻塞等待策略，让同一个 Task CLI
+调用持续保持逻辑阻塞，而不是转成后台轮询工作流。具体等待契约见下文的
+`protocol.md`。
 
 Invocation 成功后冻结不可变 Candidate：
 
