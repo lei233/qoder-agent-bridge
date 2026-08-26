@@ -34,7 +34,7 @@ start → inspect → run → candidate
 - Explicit failed-run retry policy: continue trustworthy partial work or restart
   in an approved replacement workspace.
 - A Task-facing Skill surface that hides Worktree session paths, reopen/retry-of
-  mechanics, Runner process details, and manual timeout/polling plumbing.
+  mechanics, Runner process details, and manual Runner timeout plumbing.
 
 The existing one-shot Runner and Worktree Core are still the mechanical safety
 implementations. They are wrapped and reused rather than replaced.
@@ -116,8 +116,11 @@ node skill/qoder-agent/scripts/qoder_agent_task.mjs run \
   --prompt-file /absolute/path/to/delegation-brief.md
 ```
 
-When the user explicitly identifies that Invocation as long running, add
-`--long-task`; the Task CLI owns the concrete Runner timeout mapping.
+Every Task-managed Runner Invocation uses the same one-hour safety ceiling. The
+Task CLI does not expose a long-task mode or a manual timeout option. When a
+user explicitly identifies an Invocation as long running, only Codex's terminal
+blocking-wait policy changes so the same Task CLI call stays logically blocked
+instead of becoming a background polling workflow. See `protocol.md` below.
 
 After a successful Invocation, freeze an immutable Candidate:
 
@@ -161,15 +164,16 @@ See:
 - [worktree-review.md](skill/qoder-agent/references/worktree-review.md) for
   Candidate review, repair/retry, apply, and discard policy; and
 - [protocol.md](skill/qoder-agent/references/protocol.md) for Task-facing Runner
-  evidence and the command-session waiting contract.
+  evidence and the pre-MCP blocking command-session waiting contract.
 
 ## Low-level compatibility
 
 The generated `run_qoder.mjs` and `qoder_worktree.mjs` executables remain
 available for compatibility and mechanical diagnosis. Full `task get` output is
-also a diagnostic surface. They may expose details intentionally hidden from the
-normal Skill workflow and must not be used to bypass Task locking, Candidate
-identity, explicit approvals, retry policy, or a fail-closed result.
+also a diagnostic surface. The low-level Runner CLI may expose timeout controls
+that the normal Task CLI intentionally does not. Diagnostic surfaces must not be
+used to bypass Task locking, Candidate identity, explicit approvals, retry
+policy, or a fail-closed result.
 
 ## Development checks
 
