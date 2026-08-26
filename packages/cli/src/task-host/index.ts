@@ -1,4 +1,10 @@
 export { TaskHostError, normalizeHostError } from "./errors";
+export {
+  DEFAULT_TASK_MAX_MODEL_REQUEST_RETRIES,
+  DEFAULT_TASK_TIMEOUT_MS,
+  resolveTaskExecutionPolicy,
+  type TaskExecutionPolicy,
+} from "./execution-policy";
 export { acquireTaskLock, lockPathForTask, TaskLock } from "./lock";
 export {
   TASK_CANDIDATE_DIR,
