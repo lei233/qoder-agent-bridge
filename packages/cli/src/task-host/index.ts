@@ -22,16 +22,13 @@ export {
   type CleanupIssue,
   type EmbeddedTaskHostDependencies,
   type InvocationOperationResult,
+  type PreparedSuccessorRetry,
   type StartTaskResult,
   type TaskResolutionResult,
   type TaskRunnerOptions,
 } from "./host";
 export {
-  discardPreparedSuccessorRetry,
   inspectTaskWorkspace,
-  prepareSuccessorRetry,
-  runPreparedSuccessorRetry,
-  type PreparedSuccessorRetry,
   type RetryEligibility,
   type SkillBridgeDependencies,
   type TaskWorkspaceDisclosure,
