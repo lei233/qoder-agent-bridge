@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  MAX_TIMEOUT_MS,
   PROTOCOL_VERSION,
   RUNNER_VERSION,
   disposeWorktree,
@@ -330,25 +331,25 @@ describe("Skill-facing Task CLI parsing", () => {
     ).toMatchObject({ command: "retry", strategy: "continue", worktree: "current" });
   });
 
-  it("maps long-task policy without requiring manual timeout plumbing", () => {
-    expect(
-      parseTaskArgs(["run", "--task", "/tmp/task.json", "--prompt", "long work", "--long-task"]),
-    ).toMatchObject({
+  it("uses one Task-managed Runner ceiling without a long-task CLI mode", () => {
+    expect(parseTaskArgs(["run", "--task", "/tmp/task.json", "--prompt", "work"])).toMatchObject({
       command: "run",
-      runner: { timeoutMs: "3600000" },
+      runner: { timeoutMs: String(MAX_TIMEOUT_MS) },
     });
+    expect(() =>
+      parseTaskArgs(["run", "--task", "/tmp/task.json", "--prompt", "work", "--long-task"]),
+    ).toThrow(/Unsupported/);
     expect(() =>
       parseTaskArgs([
         "run",
         "--task",
         "/tmp/task.json",
         "--prompt",
-        "long work",
-        "--long-task",
+        "work",
         "--timeout-ms",
         "123",
       ]),
-    ).toThrow(/cannot be combined/);
+    ).toThrow(/Unsupported/);
   });
 
   it("rejects Task-level recover and raw prepared-state plumbing", () => {
