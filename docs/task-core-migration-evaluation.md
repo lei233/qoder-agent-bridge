@@ -30,7 +30,8 @@ The Skill directly coordinated details such as:
 - Worktree prepare/inspect/diff/reopen/apply/dispose commands;
 - Worktree session paths and retry-of lineage;
 - the temporary Qoder execution cwd as plumbing between commands;
-- manual Runner timeout values and host polling timings; and
+- manual Runner timeout values and Runner process mechanics;
+- host terminal wait timings used to keep long CLI calls blocking; and
 - recovery-vs-retry vocabulary tied to Worktree mechanics.
 
 Those details were necessary to keep the workflow safe, but they made the Skill
@@ -63,12 +64,31 @@ prepared successor session paths
 reopen mechanics
 Runner cwd/executable plumbing
 legacy Runner recovery hints
-manual timeout milliseconds
+manual Runner timeout milliseconds
 process-group / PID / kill mechanics
-host polling interval constants
 ```
 
-The remaining `workspace.cwd` is intentional. The Skill needs one concrete
+One host-mechanical compatibility shim intentionally remains: while Codex calls
+the Task CLI through a terminal rather than a native Task/MCP tool, the Skill
+keeps explicit long `exec_command` / `write_stdin` wait budgets. Those waits are
+not Runner timeout semantics and are not Task-domain state. They exist to keep
+one Task CLI Invocation logically blocking for long stretches and prevent Codex
+from turning an hour-long operation into an asynchronous workflow with repeated
+status polling or unrelated reasoning between polls.
+
+The current shim uses the established host budgets:
+
+```text
+ordinary:      200000 ms outer / 180000 ms session wait
+explicit long: 300000 ms outer / 280000 ms session wait
+```
+
+The first terminal round uses a 15000 ms startup yield and then at most one long
+wait on the same live session per outer tool call. A future MCP Task tool with
+native long-lived blocking/progress semantics should remove this shim rather
+than reproducing the constants in Task Core or Task Manager domain state.
+
+The remaining `workspace.cwd` is also intentional. The Skill needs one concrete
 filesystem boundary for three policy responsibilities that must not move into
 Task Core:
 
@@ -82,7 +102,9 @@ Runner or Worktree operations.
 ### Result
 
 The Skill is now primarily a policy layer rather than a second mechanical
-coordinator. Low-level commands and full `task get` output remain explicit
+coordinator. The pre-MCP blocking terminal shim is adapter debt at the Codex
+host boundary, not a second implementation of Task/Runner/Worktree lifecycle.
+Low-level commands and full `task get` output remain explicit
 compatibility/diagnostic surfaces, not normal lifecycle dependencies.
 
 ## Question 2: Did Candidate/apply identity improve?
@@ -197,6 +219,11 @@ artifact ownership/retention
 manager restart behavior
 ```
 
+The MCP design should also explicitly replace the temporary terminal blocking
+shim with a native long-lived Task invocation/progress contract. That replacement
+is an adapter/API concern; the wait-budget constants should not migrate into the
+durable Task model.
+
 Only after those are explicit should SQLite schema, daemon APIs, or MCP Tasks
 integration be implemented.
 
@@ -213,6 +240,8 @@ Core milestone:
 - low-level Runner and Worktree CLIs remain supported for compatibility and
   diagnosis;
 - `workspace.cwd` remains visible to the Skill for disclosure/context/checks;
+- Codex still needs explicit long terminal-tool wait budgets to simulate a
+  blocking Task call until an MCP Task tool replaces that adapter behavior;
 - the Embedded Host duplicates a small amount of Runner-result persistence logic
   in the prepared-restart bridge; and
 - stale locks still require manual diagnosis rather than reconciliation.
@@ -226,7 +255,7 @@ The Task Core milestone is successful enough to stop incremental migration work.
 The architecture now has a clearer separation:
 
 ```text
-Skill policy
+Skill policy + temporary Codex terminal blocking shim
     -> task-aware CLI / Embedded Host
         -> Task Core domain semantics
         -> Runner + Worktree mechanical truth
