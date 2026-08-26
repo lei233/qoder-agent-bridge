@@ -32,8 +32,8 @@ For Skill-driven work use `--prompt-file`; inline `--prompt` is compatibility
 only.
 
 The normal Task surface does not accept Runner-mechanical overrides such as
-`--timeout-ms`, `--long-task`, `--max-model-request-retries`, or
-`--qodercli-path`. Invocation callers choose the prompt and may choose a model;
+`--timeout-ms`, caller-selected internal retry counts, explicit executable
+overrides, or a caller-selected long-task mode. Invocation callers choose the prompt and may choose a model;
 the Task Host deployment chooses executable resolution, timeout, and Runner
 internal model-request retry policy.
 

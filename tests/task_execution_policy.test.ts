@@ -55,6 +55,7 @@ function envelope(cwd: string): RunnerEnvelope {
     qoderOutput: { format: "json", raw: "" },
     retryable: false,
     recovery: null,
+    error: undefined,
   };
 }
 

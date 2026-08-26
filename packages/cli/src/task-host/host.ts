@@ -555,7 +555,11 @@ export class EmbeddedTaskHost {
           ),
         );
       }
-      const statePath = await realpath(prepared.statePath);
+      if (prepared === null) {
+        throw new TaskHostError("internal_error", "Worktree preparation returned no session.");
+      }
+      const preparedSession = prepared;
+      const statePath = await realpath(preparedSession.statePath);
       task = attachInitialWorktreeSession(task, {
         id: this.#createId("wt"),
         statePath,
@@ -568,7 +572,7 @@ export class EmbeddedTaskHost {
         taskStatePath: store.taskStatePath,
         taskRoot: store.taskRoot,
         statePath,
-        qoderCwd: prepared.worktreeCwd,
+        qoderCwd: preparedSession.worktreeCwd,
       };
     } catch (error) {
       if (!prepareStarted) {
