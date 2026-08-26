@@ -48,18 +48,26 @@ describe("Qoder Skill Task migration", () => {
     expect(review).toContain("No retry is automatic");
   });
 
-  it("keeps Runner process and manual timeout mechanics below the Skill surface", async () => {
+  it("keeps Runner mechanics hidden while preserving the pre-MCP blocking wait shim", async () => {
     const skill = await source("skill/qoder-agent/SKILL.md");
     const protocol = await source("skill/qoder-agent/references/protocol.md");
 
     expect(skill).toContain("--long-task");
     expect(protocol).toContain("--long-task");
     expect(skill).not.toContain("--timeout-ms 3600000");
-    expect(protocol).not.toContain("yield_time_ms");
+
+    expect(protocol).toContain("pre-MCP compatibility shim");
+    expect(protocol).toContain("exec_command.yield_time_ms: 15000");
+    expect(protocol).toContain('"yield_time_ms": 200000');
+    expect(protocol).toContain("yield_time_ms: 180000");
+    expect(protocol).toContain("`yield_time_ms` to `300000`");
+    expect(protocol).toContain("`write_stdin` wait to `280000`");
+    expect(protocol).toContain("exactly one empty-stdin wait");
+    expect(protocol).toContain("Do not issue shorter or higher-frequency waits");
+
     expect(protocol).not.toContain("taskkill.exe");
     expect(protocol).not.toContain("SIGKILL");
     expect(protocol).not.toContain("process group");
-    expect(protocol).not.toMatch(/180000\s*ms|280000\s*ms|200000\s*ms|300000\s*ms/u);
   });
 
   it("tracks the task-aware standalone Skill artifact in build freshness checks", async () => {
