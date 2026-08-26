@@ -15,8 +15,10 @@ executor; Qoder has no implicit access to Codex Skills or context.
 ## Keep These Boundaries
 
 - For code-changing Git tasks, use `scripts/qoder_agent_task.mjs` as the primary
-  lifecycle surface. It owns Task state, isolated workspace lineage, Runner
-  invocations, immutable Candidate identity, and apply/discard outcome.
+  lifecycle surface. The CLI presents Task commands and Task-facing JSON while
+  the Embedded Task Host owns application orchestration, isolated workspace
+  lineage, Runner invocations, immutable result persistence, and fail-closed
+  handling.
 - Qoder still runs under the same fixed Runner safety policy: absolute cwd,
   `permission-mode auto`, JSON output, no session persistence, no permission or
   tool-filter overrides, no credentials, and no system-prompt overrides.
@@ -262,15 +264,16 @@ only the explicit retry strategies in `worktree-review.md`:
 
 Do not use a Task-level `recover` command.
 
-The Task CLI uses one uniform Runner safety ceiling for every Invocation. Do not
-pass a timeout option from the Skill. If the user explicitly identifies the
-delegated Invocation as long running, keep the exact same Task CLI command and
-select the explicit-long **host-tool wait budget** from `protocol.md`. Do not
-infer long-running status from complexity, repository size, prompt text, or
-elapsed time.
+The Task caller supplies the prompt and may supply a model preference. Do not
+pass timeout, Runner internal model-request retry, long-task, or executable-path
+controls through the Task CLI. `EmbeddedTaskHost` resolves those execution
+mechanics from trusted deployment policy for each Runner-owning Invocation and
+records the actual policy only in its immutable result artifact.
 
-Until a native MCP Task tool replaces this terminal adapter, keep a live Task
-CLI invocation logically blocked: do not convert it into an asynchronous
+Until a native MCP Task tool replaces this terminal adapter, use the unified
+**host-tool wait budget** from `protocol.md` for every Runner-owning Task
+Invocation. Do not ask the user to classify a Task as long running. Keep a live
+Task CLI invocation logically blocked: do not convert it into an asynchronous
 background workflow, do not poll it at short intervals, and do not perform
 unrelated work between waits. The Task Host owns Runner process, timeout,
 termination, and result-persistence mechanics; the Skill owns only this
@@ -295,8 +298,10 @@ temporary Codex host-call blocking discipline.
 
 At handoff report Task outcome, Runner status, Candidate ID, actual changed
 files, independent checks/results, unresolved limitations, and any incomplete
-cleanup or preserved Task lock. If a final Task/Runner result cannot be proven,
-treat execution as unknown and stop for diagnosis.
+cleanup or preserved Task lock. If `start` fails ambiguously, surface its
+Task-owned `diagnosticRef` and do not automatically start a replacement Task. If
+a final Task/Runner result cannot be proven, treat execution as unknown and stop
+for diagnosis.
 
 ## Compatibility and Diagnosis
 
@@ -311,4 +316,4 @@ ambiguous external side effect.
 Copy this directory to a project's `.codex/skills/qoder-agent/` or the personal
 Codex skills directory. Retain `scripts/`, `references/`, and `agents/`, keep
 all three bundled scripts executable, and make `qodercli` available on `PATH`
-or through an absolute `QODERCLI_PATH`.
+or through an absolute deployment `QODERCLI_PATH`.
