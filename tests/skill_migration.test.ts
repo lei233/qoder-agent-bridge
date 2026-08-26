@@ -56,6 +56,8 @@ describe("Qoder Skill Task migration", () => {
     expect(protocol).toContain("--long-task");
     expect(skill).not.toContain("--timeout-ms 3600000");
 
+    expect(skill).toContain("host-tool wait budget");
+    expect(skill).toContain("do not perform unrelated work between waits");
     expect(protocol).toContain("pre-MCP compatibility shim");
     expect(protocol).toContain("exec_command.yield_time_ms: 15000");
     expect(protocol).toContain('"yield_time_ms": 200000');
