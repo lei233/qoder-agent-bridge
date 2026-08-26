@@ -96,10 +96,7 @@ function runnerOptions() {
   return {
     prompt: "make the requested change",
     promptFile: undefined,
-    qodercliPath: undefined,
     model: undefined,
-    timeoutMs: undefined,
-    maxModelRequestRetries: undefined,
   };
 }
 
@@ -185,7 +182,7 @@ describe("Embedded Task Host", () => {
     expect(failed.task.lifecycle).toBe("open");
     expect(failed.task.invocations.at(-1)?.status).toBe("failed");
 
-    const retried = await host.retry(started.taskStatePath, "current", runnerOptions());
+    const retried = await host.retry(started.taskStatePath, runnerOptions());
     expect(retrySaw).toBe("run-1\n");
     expect(retried.task.worktreeSessions).toHaveLength(1);
     expect(retried.task.invocations.at(-1)).toMatchObject({ kind: "retry", status: "succeeded" });
@@ -194,7 +191,7 @@ describe("Embedded Task Host", () => {
     await host.discard(started.taskStatePath);
   });
 
-  it("retries on an immediate successor without carrying failed partial work", async () => {
+  it("runs a prepared successor without carrying failed partial work", async () => {
     const source = await createFixture();
     let successorSaw = "";
     const host = new EmbeddedTaskHost({
@@ -204,10 +201,16 @@ describe("Embedded Task Host", () => {
         }
       }),
       createId: deterministicIds(),
+      createPreparationId: () => "prep-1",
     });
     const started = await startTracked(host, source);
     await host.run(started.taskStatePath, runnerOptions());
-    const retried = await host.retry(started.taskStatePath, "successor", runnerOptions());
+    const prepared = await host.prepareSuccessorRetry(started.taskStatePath);
+    const retried = await host.runPreparedSuccessorRetry(
+      started.taskStatePath,
+      prepared.preparationId,
+      runnerOptions(),
+    );
 
     expect(successorSaw).toBe("base\n");
     expect(retried.task.worktreeSessions).toHaveLength(2);
