@@ -21,6 +21,10 @@ Qoder receives one bounded task brief inside an isolated Task workspace.
 - Keep prompts free of tokens, passwords, API keys, and other credentials.
 - Treat Task/Runner JSON as execution evidence, not as a replacement for
   independently reviewing the immutable Candidate patch and tests.
+- Task-managed Runner Invocations use one uniform safety ceiling. The Task CLI
+  has no long-task or manual-timeout mode. If the user explicitly classifies an
+  Invocation as long running, only Codex's pre-MCP terminal blocking-wait budget
+  changes; the Task CLI command and Runner ceiling do not.
 - Stop on Runner failure. Never retry automatically. Continue partial work only
   when Skill policy accepts it and `retryEligibility.current` allows the
   mechanical path; otherwise use an explicitly prepared restart workspace.
@@ -40,7 +44,7 @@ Copy both Skill directories to either:
 `qoder-agent` contains `SKILL.md`, `agents/openai.yaml`, Task workflow
 references, and generated standalone executables under `scripts/`. Their
 TypeScript sources live in `packages/core` and `packages/cli`; regenerate the
-`.mjs` artifacts with `pnpm build` instead of editing them directly.
+`.mjs` artifacts with `pnpm skill:build` instead of editing them directly.
 
 ## Verification evidence
 
