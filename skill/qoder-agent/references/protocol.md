@@ -152,26 +152,101 @@ cleanup. Always parse the final JSON because process exit alone is not the Task
 outcome; for example an apply can truthfully report `outcome: "applied"` while
 also reporting incomplete cleanup.
 
-## Waiting Contract
+## Blocking Host-Tool Waiting Contract
 
 A Runner-owning Task command remains active until the Qoder child has ended and
 the Invocation result has been persisted or the Host has produced a fail-closed
-error.
+error. Until that final Task CLI JSON exists, the Skill must keep the original
+command invocation logically blocked instead of turning the work into an
+independent background workflow.
 
-When the host terminal/tool returns a live command session instead of a final
-exit, keep waiting on **that same session** until final JSON is available. Do not
-start a duplicate Task command, inspect concurrently, or poll by launching new
-processes. Use the host tool's supported long-command waiting mechanism; exact
-polling intervals are host mechanics, not Skill policy.
+This section is an intentional **pre-MCP compatibility shim**. The current Codex
+terminal interface is being used to approximate one long-lived blocking tool
+call. These wait values are host-tool orchestration policy, not Runner timeout
+semantics and not Task-domain state. A future MCP Task tool with native
+long-lived calls or progress delivery should replace this section rather than
+copying it into Task Core.
 
-For an explicitly long-running Invocation, add `--long-task` to the Task command
-and continue waiting on the same command session. Do not manually coordinate a
-separate Runner timeout or process tree.
+When programmatic terminal tool calling is available, select the host wait
+policy once for the Invocation:
 
-If the command channel is lost, accept completion only when Task state and its
-immutable `resultRef` establish a consistent final Invocation. If completion
-cannot be proven or a stale lock remains, treat the result as unknown and stop
-for diagnosis.
+| Invocation classification | Outer tool call | Inner session wait |
+| ------------------------- | --------------: | -----------------: |
+| Ordinary                  |       200000 ms |          180000 ms |
+| Explicit long task        |       300000 ms |          280000 ms |
+
+Do not use the long-task policy unless the user explicitly classified that
+Invocation as long running. The long host wait policy and the Task CLI
+`--long-task` flag should be selected together for that Invocation. Later rounds
+retain 20000 ms of outer synchronization headroom; the first round also retains
+headroom beyond the initial 15000 ms startup wait. These values exist to keep
+Codex blocked for long stretches and suppress meaningless high-frequency
+polling while Qoder is still working.
+
+For the first round, start the exact approved Task CLI command with
+`exec_command.yield_time_ms: 15000`; do not rely on the terminal tool's short
+default. If it returns an exit code, use that final result. If it returns a live
+session ID, make exactly one empty-stdin wait on that same session inside the
+same outer tool call. For an ordinary Invocation:
+
+```js
+// @exec: {"yield_time_ms": 200000, "max_output_tokens": 10000}
+const started = await tools.exec_command({
+  cmd: "<exact approved qoder_agent_task run|repair|retry command>",
+  workdir: "<absolute task directory>",
+  yield_time_ms: 15000,
+  max_output_tokens: 10000,
+  // Include the exact approved sandbox fields when host access is required.
+});
+
+if (started.exit_code !== undefined) {
+  text(JSON.stringify(started));
+} else {
+  const waited = await tools.write_stdin({
+    session_id: started.session_id,
+    chars: "",
+    yield_time_ms: 180000,
+    max_output_tokens: 10000,
+  });
+  text(JSON.stringify(waited));
+}
+```
+
+For an explicitly long-running Invocation, change only the outer pragma's
+`yield_time_ms` to `300000`, the inner `write_stdin` wait to `280000`, and add
+`--long-task` to the Task CLI command.
+
+For every later round, keep the same policy and make exactly one empty-stdin
+wait on the existing session. The ordinary form is:
+
+```js
+// @exec: {"yield_time_ms": 200000, "max_output_tokens": 10000}
+const waited = await tools.write_stdin({
+  session_id: <existing session ID>,
+  chars: "",
+  yield_time_ms: 180000,
+  max_output_tokens: 10000,
+});
+text(JSON.stringify(waited));
+```
+
+For an explicitly long-running Invocation, use `300000` ms outer and `280000`
+ms inner waits instead. Each value is a maximum wait: process exit or available
+final output may return earlier.
+
+Do not issue shorter or higher-frequency waits, launch duplicate Task commands,
+run concurrent `task inspect`, or perform unrelated work merely because the
+terminal returned a live session. Start another wait round only when the prior
+long wait still returns a live session ID. The intended behavior is to spend
+most of the Invocation blocked inside the terminal tool rather than repeatedly
+reasoning about an operation whose state has not changed.
+
+If these long-yield controls are unsupported by the host, use the longest
+supported blocking wait on the same session and avoid increasing poll
+frequency. If the command channel is lost, accept completion only when Task
+state and its immutable `resultRef` establish a consistent final Invocation. If
+completion cannot be proven or a stale lock remains, treat the result as unknown
+and stop for diagnosis.
 
 ## Output and Redaction
 
