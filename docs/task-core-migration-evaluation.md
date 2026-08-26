@@ -1,26 +1,37 @@
 # Task Core Migration Evaluation
 
-This document is the explicit checkpoint after PR4 of the Task Core migration.
-It evaluates the architecture before any Task Manager, SQLite, daemon, or MCP
-work begins.
+This document is the explicit checkpoint for the Task Core / Embedded Host
+milestone. It evaluates the architecture before any Task Manager, SQLite,
+daemon, or MCP work begins.
 
 ## Scope evaluated
 
-The migration introduced four layers in sequence:
+The migration has four layers:
 
 1. permanent pure Task Core domain semantics;
-2. a temporary file-backed Embedded Task Host with fail-closed locking and
-   immutable Task-owned artifacts;
-3. a task-aware CLI used by the Qoder Skill;
-4. a reduced Skill-facing surface that hides low-level Worktree and Runner
-   orchestration details.
+2. a temporary file-backed Embedded Task Host with fail-closed locking,
+   Task-owned diagnostics, and immutable Task-owned artifacts;
+3. a task-aware CLI used by the Qoder Skill; and
+4. a reduced Skill-facing surface that keeps policy / approval / review above
+   the mechanical execution boundary.
 
 The existing one-shot Runner and Worktree Core remain the mechanical execution
-and isolation implementations. They were wrapped rather than rewritten.
+and isolation implementations. They are owned below the Host rather than
+reimplemented by the Skill.
+
+The intended ownership is now:
+
+```text
+Skill decides policy.
+CLI presents commands.
+EmbeddedTaskHost owns execution/orchestration.
+Task Core owns state semantics.
+Runner and Worktree own mechanics.
+```
 
 ## Question 1: Did Task Core reduce orchestration leakage?
 
-Yes, materially, with a small intentional remainder.
+Yes, materially.
 
 ### Before the migration
 
@@ -30,16 +41,16 @@ The Skill directly coordinated details such as:
 - Worktree prepare/inspect/diff/reopen/apply/dispose commands;
 - Worktree session paths and retry-of lineage;
 - the temporary Qoder execution cwd as plumbing between commands;
-- manual Runner timeout values and Runner process mechanics;
+- manual Runner timeout values and internal model-request retry controls;
+- explicit Qoder executable overrides;
 - host terminal wait timings used to keep long CLI calls blocking; and
 - recovery-vs-retry vocabulary tied to Worktree mechanics.
 
-Those details were necessary to keep the workflow safe, but they made the Skill
-itself a second orchestration implementation.
+Those details made the Skill a second orchestration implementation.
 
-### After PR4
+### At the Embedded Host milestone
 
-The normal Skill workflow depends on:
+The normal Skill workflow depends on Task-facing evidence such as:
 
 ```text
 taskStatePath
@@ -52,7 +63,7 @@ Candidate identity
 Task/Invocation result evidence
 ```
 
-It no longer depends on:
+It no longer owns or selects:
 
 ```text
 Worktree statePath
@@ -64,64 +75,60 @@ prepared successor session paths
 reopen mechanics
 Runner cwd/executable plumbing
 legacy Runner recovery hints
-manual Runner timeout milliseconds
+Runner timeout milliseconds
+Runner internal model-request retry count
 process-group / PID / kill mechanics
 ```
 
-Task-managed invocations now use one uniform Runner safety ceiling, currently
-the Runner maximum of one hour. The Task CLI does not expose a long-task mode or
-manual timeout option. Low-level Runner timeout overrides remain diagnostic
-mechanics outside the normal Skill surface.
+Task execution policy is a Host deployment concern. `QODER_TASK_TIMEOUT_MS` and
+`QODER_TASK_MAX_MODEL_REQUEST_RETRIES` may configure the Host, while individual
+Task invocations and the Skill cannot override them. Invalid non-empty deployment
+overrides silently fall back to defaults; the actual policy and fallback evidence
+are recorded only in the immutable Invocation result artifact, not in Task Core
+state or normal Skill-facing JSON.
+
+The Qoder executable is likewise resolved by the trusted deployment / Runner
+path rather than supplied by a normal Task invocation. `model` remains an
+Invocation-level execution preference.
 
 One host-mechanical compatibility shim intentionally remains: while Codex calls
-the Task CLI through a terminal rather than a native Task/MCP tool, the Skill
-keeps explicit long `exec_command` / `write_stdin` wait budgets. Those waits are
-not Runner timeout semantics and are not Task-domain state. They exist to keep
-one Task CLI Invocation logically blocking for long stretches and prevent Codex
-from turning an hour-long operation into an asynchronous workflow with repeated
-status polling or unrelated reasoning between polls.
+the Task CLI through a terminal rather than a native Task/MCP tool, the caller
+keeps the original Task CLI command logically blocking on one terminal session.
+There is no ordinary-vs-explicit-long Task classification. The current adapter
+profile uses one non-trivial startup yield followed, when necessary, by the
+longest reasonable same-session blocking wait supported by the host. It must not
+start duplicate Task commands, run concurrent Task inspection, or turn a live
+session into short-frequency polling.
 
-The current shim uses the established host budgets:
+Those wait values are adapter policy only. They are not Runner timeout semantics,
+Task execution policy, or Task-domain state. A future MCP Task tool with native
+long-lived calls or progress delivery should delete this shim rather than copy
+its constants into Task Core or a Task Manager.
 
-```text
-ordinary:      200000 ms outer / 180000 ms session wait
-explicit long: 300000 ms outer / 280000 ms session wait
-```
-
-The first terminal round uses a 15000 ms startup yield and then at most one long
-wait on the same live session per outer tool call. Explicit-long classification
-changes only this Codex wait policy; it does not change the Task CLI command or
-Runner ceiling. A future MCP Task tool with native long-lived blocking/progress
-semantics should remove this shim rather than reproducing the constants in Task
-Core or Task Manager domain state.
-
-The remaining `workspace.cwd` is also intentional. The Skill needs one concrete
-filesystem boundary for three policy responsibilities that must not move into
-Task Core:
+The remaining `workspace.cwd` disclosure is intentional. The Skill needs one
+concrete filesystem boundary for policy responsibilities that should not move
+into Task Core:
 
 - external-data disclosure;
 - context selection relative to the execution workspace; and
 - independent verification/check execution.
 
-That path is now a Task-facing disclosure, not a value the Skill must pass into
-Runner or Worktree operations.
+That path is a Task-facing disclosure, not a value the Skill passes back into
+Runner or Worktree execution.
 
 ### Result
 
-The Skill is now primarily a policy layer rather than a second mechanical
-coordinator. The pre-MCP blocking terminal shim is adapter debt at the Codex
-host boundary, not a second implementation of Task/Runner/Worktree lifecycle.
-Low-level commands and full `task get` output remain explicit
-compatibility/diagnostic surfaces, not normal lifecycle dependencies.
+The Skill is now a policy / approval / review layer rather than a mechanical
+Task executor. Low-level Runner and Worktree commands and full `task get` output
+remain compatibility/diagnostic surfaces, not normal lifecycle dependencies.
 
 ## Question 2: Did Candidate/apply identity improve?
 
 Yes.
 
 The pre-Task workflow reviewed a generated Qoder-only patch and later asked the
-Worktree coordinator to apply its current review patch. Safety checks existed,
-but the Skill itself had to preserve the association between the reviewed patch
-and the later apply operation.
+Worktree coordinator to apply its current review patch. The Skill had to preserve
+the association between the reviewed patch and the later apply operation.
 
 The Task workflow makes that identity explicit and durable:
 
@@ -136,9 +143,9 @@ The Task workflow makes that identity explicit and durable:
 - terminal `appliedCandidateId` persists which Candidate produced the applied
   outcome.
 
-This removes a major identity ambiguity: "the patch we reviewed" and "the
-patch the coordinator will apply" are now connected by a first-class Task
-entity and checked bytes, rather than convention alone.
+This removes a major identity ambiguity: "the patch we reviewed" and "the patch
+the coordinator will apply" are connected by a first-class Task entity and
+checked bytes rather than convention alone.
 
 ## Question 3: Did retry semantics become clearer without weakening policy?
 
@@ -148,27 +155,57 @@ Task Core has one failed-Invocation follow-up concept: `retry`. The Skill still
 owns the policy choice:
 
 ```text
-continue  -> reuse trustworthy partial work
-restart   -> use a prepared replacement workspace
+continue -> reuse the current trustworthy workspace
+restart  -> use an explicitly prepared successor workspace
 ```
 
-This replaces Task-level `recovery` vocabulary without automatically trusting a
-failed Runner result.
+Restart retry now has one supported lifecycle:
 
-PR4 further hides the replacement Worktree session path behind a Task-owned
-opaque `preparationId`. The preparation is bound to Task identity/version and
-predecessor lineage. Execution rejects stale or drifted preparations, while an
-explicit discard can still clean a stale preparation when Task ownership is
-provable.
+```text
+prepare successor
+-> policy / disclosure / approval
+-> run prepared successor
+```
 
-The simplification is therefore vocabulary/orchestration cleanup, not a weaker
-retry policy.
+`EmbeddedTaskHost` owns that prepared successor end to end: preparation,
+ownership validation, Task-version/staleness validation, workspace-drift
+validation, Runner execution, immutable result persistence, Task commit, and
+explicit discard. The Skill Bridge does not execute Runner, write Invocation
+result artifacts, call `finishInvocation`, or attach successor Worktree state.
 
-## Question 4: Are crash boundaries solved well enough to build Task Manager?
+The old one-step Host successor retry compatibility path has been removed.
+Continue retry remains on the current workspace and uses the same Host invocation
+execution/result/commit pipeline as initial run, repair, and prepared restart.
 
-No. They are improved, but deliberately incomplete.
+The simplification is therefore orchestration cleanup, not a weaker retry
+policy. Task-level retry remains intentionally separate from Runner-internal
+model-request retries configured by the Host deployment.
 
-The Embedded Host provides useful single-process safety:
+## Question 4: Are start and commit failure boundaries solved well enough for this milestone?
+
+They are fail-closed enough for the Embedded Host milestone, but they are not a
+Task Manager durability design.
+
+`EmbeddedTaskHost.start()` no longer permits a newly created Task root to become
+unlocatable. Failures are handled by evidence:
+
+- if failure is proven to occur before Worktree side effects, the Task root is
+  removed;
+- if a returned Worktree exists and cleanup is proven successful, the Task root
+  is removed; and
+- if Worktree cleanup or side-effect state cannot be proven, the Task root and
+  lock are preserved and the caller receives a Task-owned `diagnosticRef`.
+
+The diagnostic artifact records only the minimum evidence needed to locate the
+Task and understand the original/cleanup errors. It does not capture prompts,
+stdout, full environment variables, credentials, or secrets.
+
+For Runner-owning operations, one Host pipeline owns the durable running
+Invocation, deployment policy injection, Runner execution, immutable result
+artifact, `finishInvocation`, final Task save, and fail-closed handling when the
+commit result is ambiguous.
+
+The Embedded Host also provides useful single-process safety:
 
 - exclusive fail-closed Task mutation locks;
 - no automatic stale-lock reclamation;
@@ -191,27 +228,27 @@ multi-request Task Manager:
 - multi-manager/shared-database semantics.
 
 A file lock that intentionally becomes stale is an acceptable fail-closed
-prototype behavior. It is not a production Task Manager recovery design.
+milestone behavior. It is not a production Task Manager recovery design.
 
-## Question 5: Should SQLite / daemon / MCP start immediately after PR4?
+## Question 5: Should SQLite / daemon / MCP start immediately after this milestone?
 
-Not automatically.
+Not as incremental Embedded Host work.
 
-The migration achieved its immediate goals:
+The milestone achieves the intended boundary:
 
 - one Task-domain implementation;
 - durable Candidate/apply identity;
 - explicit Invocation/workspace lineage;
+- Host-owned Runner execution policy and orchestration;
 - a task-aware execution facade;
-- less Skill orchestration leakage; and
+- a Skill that remains policy / approval / review oriented; and
 - preservation of the existing Runner/Worktree safety path.
 
-Before starting Task Manager implementation, the next architecture step should
-be a separate design decision for durable operation semantics. In particular,
-settle the transaction boundary between authoritative metadata and external
-side effects before choosing SQLite tables or MCP methods.
+The next architecture step should be a separate Task Manager durability design.
+In particular, settle the transaction boundary between authoritative metadata
+and external side effects before choosing SQLite tables or MCP methods.
 
-A sensible next design document should specify at least:
+A future design should specify at least:
 
 ```text
 request_id idempotency
@@ -226,48 +263,57 @@ artifact ownership/retention
 manager restart behavior
 ```
 
-The MCP design should also explicitly replace the temporary terminal blocking
-shim with a native long-lived Task invocation/progress contract. That replacement
-is an adapter/API concern; the wait-budget constants should not migrate into the
+The MCP design should also replace the temporary terminal blocking shim with a
+native long-lived Task invocation/progress contract. That replacement is an
+adapter/API concern; the wait-budget constants should not migrate into the
 durable Task model.
 
-Only after those are explicit should SQLite schema, daemon APIs, or MCP Tasks
-integration be implemented.
+Only after those semantics are explicit should SQLite schema, daemon APIs, or
+MCP Tasks integration be implemented.
 
-## Residual debt after PR4
+## Persistence compatibility
 
-The following are acceptable residuals, not blockers for completing the Task
-Core milestone:
+The current `task.json` `schemaVersion = 1` is an internal persistence format for
+the Embedded Host milestone, not a long-term public compatibility contract.
+Compatible changes may remain v1. An incompatible persisted-state change must
+bump the schema and fail closed when an older open Task is encountered. This
+milestone does not introduce an automatic migration framework.
 
-- `EmbeddedTaskHost.retry(..., "successor")` still contains the older one-call
-  successor strategy for non-Skill callers, while the Skill uses the safer
-  prepare/approve/run bridge;
-- full Task state intentionally contains Worktree session paths because the Host
-  needs durable lineage references;
+That is why the milestone intentionally does not generalize current Worktree and
+Candidate path references into future Task Manager workspace/artifact domains,
+and does not add Invocation approved-input hashes prematurely.
+
+## Residual debt after the Embedded Host milestone
+
+The following are acceptable residuals for this checkpoint:
+
+- full Task state intentionally contains Worktree session paths because the
+  Embedded Host needs durable lineage references;
 - low-level Runner and Worktree CLIs remain supported for compatibility and
   diagnosis;
 - `workspace.cwd` remains visible to the Skill for disclosure/context/checks;
-- Codex still needs explicit long terminal-tool wait budgets to simulate a
-  blocking Task call until an MCP Task tool replaces that adapter behavior;
-- the Embedded Host duplicates a small amount of Runner-result persistence logic
-  in the prepared-restart bridge; and
-- stale locks still require manual diagnosis rather than reconciliation.
+- Codex still needs one same-session blocking terminal adapter shim until a
+  native MCP Task tool replaces it;
+- stale locks and ambiguous diagnostics require manual diagnosis rather than
+  automatic reconciliation; and
+- `task.json` remains a temporary internal file-backed persistence format.
 
-These should be reconsidered when designing the durable Task Manager, not folded
-back into pure Task Core.
+These belong to the next Task Manager durability design rather than another
+round of expanding EmbeddedTaskHost or moving mechanics back into Skill / Task
+CLI.
 
 ## Milestone conclusion
 
-The Task Core milestone is successful enough to stop incremental migration work.
-The architecture now has a clearer separation:
+The architecture now has the intended separation:
 
 ```text
-Skill policy + temporary Codex terminal blocking shim
-    -> task-aware CLI / Embedded Host
-        -> Task Core domain semantics
-        -> Runner + Worktree mechanical truth
+Skill policy / approval / review
+    -> Task CLI
+        -> EmbeddedTaskHost application/orchestration
+            -> Task Core state semantics
+            -> Runner + Worktree mechanical truth
 ```
 
-The next phase, if pursued, should begin as a new Task Manager durability design
-rather than another PR that expands Task Core or teaches the Skill more
-mechanical detail.
+The milestone should end with full validation and generated Skill artifact
+freshness. After that, the next phase should begin as a separate Task Manager
+durability design rather than continuing to grow EmbeddedTaskHost.
