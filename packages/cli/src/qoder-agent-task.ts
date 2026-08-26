@@ -158,6 +158,8 @@ function runnerOptions(values: Record<string, string>): TaskRunnerOptions {
     promptFile,
     qodercliPath: values["--qodercli-path"],
     model: values["--model"],
+    // Task-managed execution has one Runner safety ceiling. "Long task" is a
+    // Codex host-tool waiting policy and never changes this value.
     timeoutMs: String(MAX_TIMEOUT_MS),
     maxModelRequestRetries: values["--max-model-request-retries"],
   };
