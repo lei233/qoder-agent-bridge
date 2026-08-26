@@ -48,26 +48,36 @@ describe("Qoder Skill Task migration", () => {
     expect(review).toContain("No retry is automatic");
   });
 
-  it("keeps Runner timeout policy below Task CLI while preserving the pre-MCP blocking wait shim", async () => {
+  it("keeps Runner execution policy in Host and uses one pre-MCP blocking wait profile", async () => {
     const skill = await source("skill/qoder-agent/SKILL.md");
     const protocol = await source("skill/qoder-agent/references/protocol.md");
 
-    expect(skill).not.toContain("--long-task");
-    expect(protocol).not.toContain("--long-task");
-    expect(skill).not.toContain("--timeout-ms");
-    expect(protocol).not.toMatch(/qoder_agent_task[^\n]*--timeout-ms/u);
+    for (const text of [skill, protocol]) {
+      expect(text).not.toContain("--long-task");
+      expect(text).not.toMatch(/qoder_agent_task[^\n]*--timeout-ms/u);
+      expect(text).not.toMatch(/qoder_agent_task[^\n]*--max-model-request-retries/u);
+      expect(text).not.toMatch(/qoder_agent_task[^\n]*--qodercli-path/u);
+    }
+
+    expect(protocol).toContain("QODER_TASK_TIMEOUT_MS");
+    expect(protocol).toContain("QODER_TASK_MAX_MODEL_REQUEST_RETRIES");
+    expect(protocol).toContain('"executionPolicy"');
+    expect(protocol).toContain('"operability": "normal"');
 
     expect(skill).toContain("host-tool wait budget");
     expect(skill.replace(/\s+/gu, " ")).toContain("do not perform unrelated work between waits");
     expect(protocol).toContain("pre-MCP compatibility shim");
-    expect(protocol).toContain("exec_command.yield_time_ms: 15000");
-    expect(protocol).toContain('"yield_time_ms": 200000');
-    expect(protocol).toContain("yield_time_ms: 180000");
-    expect(protocol).toContain("`yield_time_ms` to `300000`");
-    expect(protocol).toContain("`write_stdin` wait to `280000`");
+    expect(protocol).toContain("initial startup yield: 15000 ms");
+    expect(protocol).toContain('"yield_time_ms": 300000');
+    expect(protocol).toContain("yield_time_ms: 280000");
     expect(protocol).toContain("exactly one empty-stdin wait");
-    expect(protocol).toContain("Do not issue shorter or higher-frequency waits");
+    expect(protocol).toContain("Do not ask the user to classify an Invocation as long running");
+    expect(protocol).toContain("Do not issue\nshorter or higher-frequency waits");
 
+    expect(protocol).not.toContain("Invocation classification");
+    expect(protocol).not.toContain("Explicit long task");
+    expect(protocol).not.toContain('"yield_time_ms": 200000');
+    expect(protocol).not.toContain("yield_time_ms: 180000");
     expect(protocol).not.toContain("taskkill.exe");
     expect(protocol).not.toContain("SIGKILL");
     expect(protocol).not.toContain("process group");
