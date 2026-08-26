@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   WorktreeError,
@@ -30,12 +30,31 @@ import {
 import { TaskHostError, normalizeHostError } from "./errors";
 import { resolveTaskExecutionPolicy, type TaskExecutionPolicy } from "./execution-policy";
 import { acquireTaskLock, type TaskLock } from "./lock";
+import {
+  assertRetryPreparationId,
+  preparedRetryMetadata,
+  readPreparedRetryMetadata,
+  retryPreparationPath,
+  writePreparedRetryMetadata,
+  type PreparedRetryMetadata,
+} from "./retry-preparation";
 import { TASK_CANDIDATE_DIR, TASK_INVOCATION_DIR, TaskFileStore, createTaskRoot } from "./store";
 
 export interface TaskRunnerOptions {
   prompt: string | undefined;
   promptFile: string | undefined;
   model: string | undefined;
+}
+
+export interface PreparedSuccessorRetry {
+  preparationId: string;
+  taskId: string;
+  taskVersion: number;
+  workspace: {
+    cwd: string;
+    changedFiles: string[];
+    includedData: WorktreeSession["includedIgnoredArtifacts"];
+  };
 }
 
 export interface InvocationOperationResult {
@@ -80,6 +99,7 @@ export interface EmbeddedTaskHostDependencies {
   disposeWorktree?: typeof disposeWorktree;
   createTaskRoot?: typeof createTaskRoot;
   createId?: (prefix: "task" | "inv" | "wt" | "candidate") => string;
+  createPreparationId?: () => string;
   now?: () => Date;
   env?: NodeJS.ProcessEnv;
 }
@@ -174,6 +194,116 @@ function candidateFiles(changedFiles: string[]): string[] {
   return canonical;
 }
 
+function uniquePreflightInvocationId(task: Task): string {
+  const used = new Set([
+    ...task.invocations.map((item) => item.id),
+    ...task.worktreeSessions.map((item) => item.id),
+    ...task.candidates.map((item) => item.id),
+  ]);
+  let id = "__qoder_agent_retry_preflight__";
+  while (used.has(id)) id += "_";
+  return id;
+}
+
+function assertRetryPreconditions(task: Task): void {
+  startRetry(task, {
+    invocationId: uniquePreflightInvocationId(task),
+    worktree: { type: "current" },
+  });
+}
+
+async function validatePreparationOwnership(
+  store: TaskFileStore,
+  preparationId: string,
+  inspect: typeof inspectWorktree,
+): Promise<{
+  task: Task;
+  predecessorRef: WorktreeSessionRef;
+  successor: Awaited<ReturnType<typeof inspectWorktree>>;
+  metadata: PreparedRetryMetadata;
+}> {
+  const metadata = await readPreparedRetryMetadata(store, preparationId);
+  if ((await realpath(metadata.taskStatePath)) !== (await realpath(store.taskStatePath))) {
+    throw new TaskHostError(
+      "retry_preparation_mismatch",
+      "Prepared successor retry belongs to a different Task state file.",
+    );
+  }
+
+  const task = await store.load();
+  if (task.id !== metadata.taskId) {
+    throw new TaskHostError(
+      "retry_preparation_mismatch",
+      "Prepared successor retry belongs to a different Task.",
+    );
+  }
+  const predecessorRef = task.worktreeSessions.find(
+    (item) => item.id === metadata.predecessorWorktreeSessionId,
+  );
+  if (
+    predecessorRef === undefined ||
+    (await realpath(predecessorRef.statePath)) !== (await realpath(metadata.predecessorStatePath))
+  ) {
+    throw new TaskHostError(
+      "retry_preparation_mismatch",
+      "Prepared successor retry predecessor is not owned by this Task.",
+    );
+  }
+
+  const successor = await inspect(metadata.successorStatePath);
+  if ((await realpath(successor.session.statePath)) !== (await realpath(metadata.successorStatePath))) {
+    throw new TaskHostError(
+      "retry_preparation_mismatch",
+      "Prepared successor retry state does not match its Task-owned metadata.",
+    );
+  }
+  if (
+    successor.session.retryOf === null ||
+    (await realpath(successor.session.retryOf)) !== (await realpath(metadata.predecessorStatePath))
+  ) {
+    throw new TaskHostError(
+      "invalid_worktree_lineage",
+      "Prepared successor Worktree does not immediately follow its recorded predecessor.",
+    );
+  }
+  return { task, predecessorRef, successor, metadata };
+}
+
+async function validatePreparedRetryForRun(
+  store: TaskFileStore,
+  preparationId: string,
+  inspect: typeof inspectWorktree,
+): Promise<{
+  task: Task;
+  currentRef: WorktreeSessionRef;
+  successor: Awaited<ReturnType<typeof inspectWorktree>>;
+  metadata: PreparedRetryMetadata;
+}> {
+  const owned = await validatePreparationOwnership(store, preparationId, inspect);
+  if (owned.task.version !== owned.metadata.taskVersion) {
+    throw new TaskHostError(
+      "retry_preparation_stale",
+      "Task state changed after successor retry preparation; prepare a new retry workspace.",
+    );
+  }
+  assertRetryPreconditions(owned.task);
+  const currentRef = activeWorktree(owned.task);
+  if (currentRef.id !== owned.metadata.predecessorWorktreeSessionId) {
+    throw new TaskHostError(
+      "retry_preparation_stale",
+      "Active Task workspace changed after successor retry preparation.",
+    );
+  }
+  ensurePrepared(owned.successor.session, "Successor retry");
+  if (owned.successor.indexModified || owned.successor.hasChanges) {
+    throw new TaskHostError(
+      "retry_preparation_changed",
+      "Prepared retry workspace changed before its approved Runner invocation.",
+    );
+  }
+  return { task: owned.task, currentRef, successor: owned.successor, metadata: owned.metadata };
+}
+
 export class EmbeddedTaskHost {
   readonly #executeRunner: typeof executeRunner;
   readonly #prepareWorktree: typeof prepareWorktree;
@@ -184,6 +314,7 @@ export class EmbeddedTaskHost {
   readonly #disposeWorktree: typeof disposeWorktree;
   readonly #createTaskRoot: typeof createTaskRoot;
   readonly #createId: (prefix: "task" | "inv" | "wt" | "candidate") => string;
+  readonly #createPreparationId: () => string;
   readonly #now: () => Date;
   readonly #env: NodeJS.ProcessEnv;
 
@@ -197,6 +328,7 @@ export class EmbeddedTaskHost {
     this.#disposeWorktree = dependencies.disposeWorktree ?? disposeWorktree;
     this.#createTaskRoot = dependencies.createTaskRoot ?? createTaskRoot;
     this.#createId = dependencies.createId ?? ((prefix) => `${prefix}-${randomUUID()}`);
+    this.#createPreparationId = dependencies.createPreparationId ?? (() => `retry-${randomUUID()}`);
     this.#now = dependencies.now ?? (() => new Date());
     this.#env = dependencies.env ?? process.env;
   }
@@ -536,7 +668,6 @@ export class EmbeddedTaskHost {
 
   async retry(
     taskStatePath: string,
-    strategy: "current" | "successor",
     options: TaskRunnerOptions,
     signal?: AbortSignal,
   ): Promise<InvocationOperationResult> {
@@ -552,70 +683,78 @@ export class EmbeddedTaskHost {
         );
       }
       const invocationId = this.#createId("inv");
-
-      if (strategy === "current") {
-        const running = startRetry(task, {
-          invocationId,
-          worktree: { type: "current" },
-        });
-        await store.save(running);
-        return this.#runStartedInvocation(
-          store,
-          lock,
-          running,
-          invocationId,
-          current.session.worktreeCwd,
-          options,
-          signal,
-        );
-      }
-
-      startRetry(task, {
+      const running = startRetry(task, {
         invocationId,
         worktree: { type: "current" },
       });
+      await store.save(running);
+      return this.#runStartedInvocation(
+        store,
+        lock,
+        running,
+        invocationId,
+        current.session.worktreeCwd,
+        options,
+        signal,
+      );
+    });
+  }
 
+  async prepareSuccessorRetry(taskStatePath: string): Promise<PreparedSuccessorRetry> {
+    return this.#withLock(taskStatePath, async (store, lock) => {
       let successor: WorktreeSession | null = null;
       try {
+        const task = await store.load();
+        assertRetryPreconditions(task);
+        const currentRef = activeWorktree(task);
+        const current = await this.#inspectWorktree(currentRef.statePath);
+        ensurePrepared(current.session, "Successor retry preparation");
+        if (current.indexModified) {
+          throw new TaskHostError(
+            "git_index_modified",
+            "Successor retry preparation refuses a workspace whose Git index was modified.",
+          );
+        }
+
         successor = await this.#prepareWorktree(current.session.sourceCwd, currentRef.statePath);
-        const successorStatePath = await realpath(successor.statePath);
-        const successorCwd = successor.worktreeCwd;
-        if (successor.retryOf === null) {
-          throw new TaskHostError(
-            "invalid_worktree_lineage",
-            "Successor Worktree did not record its predecessor state path.",
-          );
-        }
         const predecessorStatePath = await realpath(currentRef.statePath);
-        const worktreeRetryOf = await realpath(successor.retryOf);
-        if (worktreeRetryOf !== predecessorStatePath) {
+        const successorStatePath = await realpath(successor.statePath);
+        if (
+          successor.retryOf === null ||
+          (await realpath(successor.retryOf)) !== predecessorStatePath
+        ) {
           throw new TaskHostError(
             "invalid_worktree_lineage",
-            "Successor Worktree retryOf does not match the active Task WorktreeSession.",
+            "Prepared successor Worktree does not immediately follow the active Task workspace.",
           );
         }
-        const running = startRetry(task, {
-          invocationId,
-          worktree: {
-            type: "successor",
-            session: {
-              id: this.#createId("wt"),
-              statePath: successorStatePath,
-              predecessorId: currentRef.id,
-            },
-          },
-        });
-        await store.save(running);
-        successor = null;
-        return this.#runStartedInvocation(
+
+        const preparationId = this.#createPreparationId();
+        assertRetryPreparationId(preparationId);
+        await writePreparedRetryMetadata(
           store,
-          lock,
-          running,
-          invocationId,
-          successorCwd,
-          options,
-          signal,
+          preparedRetryMetadata({
+            preparationId,
+            taskStatePath: await realpath(store.taskStatePath),
+            taskId: task.id,
+            taskVersion: task.version,
+            predecessorWorktreeSessionId: currentRef.id,
+            predecessorStatePath,
+            successorStatePath,
+          }),
         );
+        const result: PreparedSuccessorRetry = {
+          preparationId,
+          taskId: task.id,
+          taskVersion: task.version,
+          workspace: {
+            cwd: successor.worktreeCwd,
+            changedFiles: [],
+            includedData: successor.includedIgnoredArtifacts,
+          },
+        };
+        successor = null;
+        return result;
       } catch (error) {
         if (successor !== null) {
           try {
@@ -624,12 +763,92 @@ export class EmbeddedTaskHost {
             await lock.preserveForDiagnosis();
             throw new TaskHostError(
               "successor_cleanup_failed",
-              "Successor retry failed before Task commit and its new Worktree could not be cleaned. The Task lock was preserved for diagnosis.",
+              "Successor retry preparation failed and its workspace could not be cleaned. The Task lock was preserved for diagnosis.",
               { error: normalizeHostError(error), cleanupError: normalizeHostError(cleanupError) },
             );
           }
         }
         throw error;
+      }
+    });
+  }
+
+  async runPreparedSuccessorRetry(
+    taskStatePath: string,
+    preparationId: string,
+    options: TaskRunnerOptions,
+    signal?: AbortSignal,
+  ): Promise<InvocationOperationResult> {
+    return this.#withLock(taskStatePath, async (store, lock) => {
+      const { task, currentRef, successor } = await validatePreparedRetryForRun(
+        store,
+        preparationId,
+        this.#inspectWorktree,
+      );
+      const invocationId = this.#createId("inv");
+      const running = startRetry(task, {
+        invocationId,
+        worktree: {
+          type: "successor",
+          session: {
+            id: this.#createId("wt"),
+            statePath: successor.session.statePath,
+            predecessorId: currentRef.id,
+          },
+        },
+      });
+      try {
+        await store.save(running);
+        await unlink(retryPreparationPath(store, preparationId));
+      } catch (error) {
+        await lock.preserveForDiagnosis();
+        throw new TaskHostError(
+          "task_commit_ambiguous",
+          "Prepared retry workspace could not be attached and finalized safely. The Task lock was preserved for diagnosis.",
+          { invocationId, error: normalizeHostError(error) },
+        );
+      }
+
+      return this.#runStartedInvocation(
+        store,
+        lock,
+        running,
+        invocationId,
+        successor.session.worktreeCwd,
+        options,
+        signal,
+      );
+    });
+  }
+
+  async discardPreparedSuccessorRetry(
+    taskStatePath: string,
+    preparationId: string,
+  ): Promise<void> {
+    return this.#withLock(taskStatePath, async (store, lock) => {
+      const { task, metadata } = await validatePreparationOwnership(
+        store,
+        preparationId,
+        this.#inspectWorktree,
+      );
+      for (const ref of task.worktreeSessions) {
+        if ((await realpath(ref.statePath)) === (await realpath(metadata.successorStatePath))) {
+          throw new TaskHostError(
+            "retry_preparation_committed",
+            "Prepared successor retry workspace is already attached to the Task and cannot be discarded as a preparation.",
+          );
+        }
+      }
+      try {
+        await this.#disposeWorktree(metadata.successorStatePath, true);
+        await unlink(retryPreparationPath(store, preparationId));
+      } catch (error) {
+        await lock.preserveForDiagnosis();
+        throw new TaskHostError(
+          "prepared_retry_cleanup_ambiguous",
+          "Prepared retry workspace could not be disposed with a proven mechanical result. The Task lock was preserved for diagnosis.",
+          { error: normalizeHostError(error) },
+        );
       }
     });
   }
