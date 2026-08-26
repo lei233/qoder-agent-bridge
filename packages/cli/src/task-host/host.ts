@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   WorktreeError,
@@ -39,6 +39,8 @@ import {
   type PreparedRetryMetadata,
 } from "./retry-preparation";
 import { TASK_CANDIDATE_DIR, TASK_INVOCATION_DIR, TaskFileStore, createTaskRoot } from "./store";
+
+const TASK_DIAGNOSTIC_DIR = "diagnostics";
 
 export interface TaskRunnerOptions {
   prompt: string | undefined;
@@ -362,6 +364,66 @@ export class EmbeddedTaskHost {
     return resultPath;
   }
 
+  async #writeStartDiagnostic(
+    store: TaskFileStore,
+    originalError: unknown,
+    cleanupError: unknown,
+    preparedWorktreeStatePath?: string,
+  ): Promise<string> {
+    const directory = join(store.taskRoot, TASK_DIAGNOSTIC_DIR);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const diagnosticRef = join(directory, "start.json");
+    await writeFile(
+      diagnosticRef,
+      `${JSON.stringify(
+        {
+          version: 1,
+          operation: "start",
+          createdAt: this.#now().toISOString(),
+          taskStatePath: store.taskStatePath,
+          originalError: normalizeHostError(originalError),
+          cleanupError: normalizeHostError(cleanupError),
+          ...(preparedWorktreeStatePath === undefined ? {} : { preparedWorktreeStatePath }),
+        },
+        null,
+        2,
+      )}\n`,
+      { encoding: "utf8", mode: 0o600, flag: "wx" },
+    );
+    return diagnosticRef;
+  }
+
+  async #throwAmbiguousStart(
+    store: TaskFileStore,
+    lock: TaskLock,
+    originalError: unknown,
+    cleanupError: unknown,
+    preparedWorktreeStatePath?: string,
+  ): Promise<never> {
+    let diagnosticRef: string;
+    try {
+      diagnosticRef = await this.#writeStartDiagnostic(
+        store,
+        originalError,
+        cleanupError,
+        preparedWorktreeStatePath,
+      );
+    } catch (diagnosticError) {
+      await lock.preserveForDiagnosis();
+      throw new TaskHostError(
+        "start_diagnostic_failed",
+        `Task start became ambiguous and its diagnostic artifact could not be written. The Task state remains preserved at ${store.taskStatePath}.`,
+        { error: normalizeHostError(diagnosticError) },
+      );
+    }
+    await lock.preserveForDiagnosis();
+    throw new TaskHostError(
+      "start_state_ambiguous",
+      "Task start failed with unproven Worktree cleanup. The Task root and lock were preserved for diagnosis.",
+      { diagnosticRef },
+    );
+  }
+
   async #finishPreRunFailure(
     store: TaskFileStore,
     lock: TaskLock,
@@ -464,13 +526,35 @@ export class EmbeddedTaskHost {
   async start(cwd: string): Promise<StartTaskResult> {
     const taskRoot = await this.#createTaskRoot();
     const store = TaskFileStore.forRoot(taskRoot);
-    const lock = await acquireTaskLock(store.taskStatePath);
+    let lock: TaskLock;
+    try {
+      lock = await acquireTaskLock(store.taskStatePath);
+    } catch (error) {
+      await rm(taskRoot, { recursive: true, force: true });
+      throw error;
+    }
+
     let prepared: WorktreeSession | null = null;
+    let prepareStarted = false;
     let attached = false;
+    let deleteTaskRoot = false;
     try {
       let task = createTask({ id: this.#createId("task") });
       await store.save(task);
-      prepared = await this.#prepareWorktree(cwd);
+      prepareStarted = true;
+      try {
+        prepared = await this.#prepareWorktree(cwd);
+      } catch (error) {
+        await this.#throwAmbiguousStart(
+          store,
+          lock,
+          error,
+          new TaskHostError(
+            "cleanup_unproven",
+            "prepareWorktree failed before returning a session, so Host cannot prove its internal cleanup completed.",
+          ),
+        );
+      }
       const statePath = await realpath(prepared.statePath);
       task = attachInitialWorktreeSession(task, {
         id: this.#createId("wt"),
@@ -487,21 +571,30 @@ export class EmbeddedTaskHost {
         qoderCwd: prepared.worktreeCwd,
       };
     } catch (error) {
+      if (!prepareStarted) {
+        deleteTaskRoot = true;
+        throw error;
+      }
       if (prepared !== null && !attached) {
         try {
           await this.#disposeWorktree(prepared.statePath, true);
+          deleteTaskRoot = true;
         } catch (cleanupError) {
-          await lock.preserveForDiagnosis();
-          throw new TaskHostError(
-            "start_cleanup_failed",
-            "Task start failed after Worktree preparation, and the temporary Worktree could not be cleaned. The lock was preserved for diagnosis.",
-            { error: normalizeHostError(error), cleanupError: normalizeHostError(cleanupError) },
+          await this.#throwAmbiguousStart(
+            store,
+            lock,
+            error,
+            cleanupError,
+            prepared.statePath,
           );
         }
       }
       throw error;
     } finally {
       await lock.release();
+      if (deleteTaskRoot) {
+        await rm(taskRoot, { recursive: true, force: true });
+      }
     }
   }
 
