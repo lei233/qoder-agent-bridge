@@ -48,13 +48,14 @@ describe("Qoder Skill Task migration", () => {
     expect(review).toContain("No retry is automatic");
   });
 
-  it("keeps Runner mechanics hidden while preserving the pre-MCP blocking wait shim", async () => {
+  it("keeps Runner timeout policy below Task CLI while preserving the pre-MCP blocking wait shim", async () => {
     const skill = await source("skill/qoder-agent/SKILL.md");
     const protocol = await source("skill/qoder-agent/references/protocol.md");
 
-    expect(skill).toContain("--long-task");
-    expect(protocol).toContain("--long-task");
-    expect(skill).not.toContain("--timeout-ms 3600000");
+    expect(skill).not.toContain("--long-task");
+    expect(protocol).not.toContain("--long-task");
+    expect(skill).not.toContain("--timeout-ms");
+    expect(protocol).not.toMatch(/qoder_agent_task[^\n]*--timeout-ms/u);
 
     expect(skill).toContain("host-tool wait budget");
     expect(skill).toContain("do not perform unrelated work between waits");
