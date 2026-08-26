@@ -3,12 +3,7 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  MAX_TIMEOUT_MS,
-  PROMPT_LIMIT_BYTES,
-  type RunnerEnvelope,
-  type Task,
-} from "@qoder-agent-bridge/core";
+import { PROMPT_LIMIT_BYTES, type RunnerEnvelope, type Task } from "@qoder-agent-bridge/core";
 import {
   EmbeddedTaskHost,
   TaskHostError,
@@ -91,9 +86,7 @@ const VALUE_OPTIONS = new Set([
   "--task",
   "--prompt",
   "--prompt-file",
-  "--qodercli-path",
   "--model",
-  "--max-model-request-retries",
   "--strategy",
   "--worktree",
   "--preparation",
@@ -156,12 +149,7 @@ function runnerOptions(values: Record<string, string>): TaskRunnerOptions {
   return {
     prompt,
     promptFile,
-    qodercliPath: values["--qodercli-path"],
     model: values["--model"],
-    // Task-managed execution has one Runner safety ceiling. "Long task" is a
-    // Codex host-tool waiting policy and never changes this value.
-    timeoutMs: String(MAX_TIMEOUT_MS),
-    maxModelRequestRetries: values["--max-model-request-retries"],
   };
 }
 
@@ -276,14 +264,7 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
     index += 1;
   }
 
-  const runnerValues = [
-    "--task",
-    "--prompt",
-    "--prompt-file",
-    "--qodercli-path",
-    "--model",
-    "--max-model-request-retries",
-  ] as const;
+  const runnerValues = ["--task", "--prompt", "--prompt-file", "--model"] as const;
 
   if (command === "start") {
     rejectOptions(values, flags, ["--cwd"]);
