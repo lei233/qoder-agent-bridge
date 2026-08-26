@@ -28,16 +28,14 @@ import {
   type WorktreeSessionRef,
 } from "@qoder-agent-bridge/core";
 import { TaskHostError, normalizeHostError } from "./errors";
+import { resolveTaskExecutionPolicy, type TaskExecutionPolicy } from "./execution-policy";
 import { acquireTaskLock, type TaskLock } from "./lock";
 import { TASK_CANDIDATE_DIR, TASK_INVOCATION_DIR, TaskFileStore, createTaskRoot } from "./store";
 
 export interface TaskRunnerOptions {
   prompt: string | undefined;
   promptFile: string | undefined;
-  qodercliPath: string | undefined;
   model: string | undefined;
-  timeoutMs: string | undefined;
-  maxModelRequestRetries: string | undefined;
 }
 
 export interface InvocationOperationResult {
@@ -83,6 +81,7 @@ export interface EmbeddedTaskHostDependencies {
   createTaskRoot?: typeof createTaskRoot;
   createId?: (prefix: "task" | "inv" | "wt" | "candidate") => string;
   now?: () => Date;
+  env?: NodeJS.ProcessEnv;
 }
 
 const SAFE_APPLY_FAILURE_CODES = new Set([
@@ -107,15 +106,19 @@ function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function runnerArgs(cwd: string, options: TaskRunnerOptions): ParsedRunnerArgs {
+function runnerArgs(
+  cwd: string,
+  options: TaskRunnerOptions,
+  executionPolicy: TaskExecutionPolicy,
+): ParsedRunnerArgs {
   return {
     cwd,
     prompt: options.prompt,
     promptFile: options.promptFile,
-    qodercliPath: options.qodercliPath,
+    qodercliPath: undefined,
     model: options.model,
-    timeoutMs: options.timeoutMs,
-    maxModelRequestRetries: options.maxModelRequestRetries,
+    timeoutMs: String(executionPolicy.timeoutMs),
+    maxModelRequestRetries: String(executionPolicy.maxModelRequestRetries),
   };
 }
 
@@ -182,6 +185,7 @@ export class EmbeddedTaskHost {
   readonly #createTaskRoot: typeof createTaskRoot;
   readonly #createId: (prefix: "task" | "inv" | "wt" | "candidate") => string;
   readonly #now: () => Date;
+  readonly #env: NodeJS.ProcessEnv;
 
   constructor(dependencies: EmbeddedTaskHostDependencies = {}) {
     this.#executeRunner = dependencies.executeRunner ?? executeRunner;
@@ -194,6 +198,7 @@ export class EmbeddedTaskHost {
     this.#createTaskRoot = dependencies.createTaskRoot ?? createTaskRoot;
     this.#createId = dependencies.createId ?? ((prefix) => `${prefix}-${randomUUID()}`);
     this.#now = dependencies.now ?? (() => new Date());
+    this.#env = dependencies.env ?? process.env;
   }
 
   async #withLock<T>(
@@ -234,11 +239,13 @@ export class EmbeddedTaskHost {
     error: unknown,
   ): Promise<InvocationOperationResult> {
     const normalized = normalizeHostError(error);
+    const executionPolicy = resolveTaskExecutionPolicy(this.#env);
     try {
       const resultRef = await this.#writeInvocationArtifact(store, invocationId, {
         version: 1,
         invocationId,
         stage,
+        executionPolicy,
         error: normalized,
       });
       const finished = finishInvocation(task, {
@@ -273,9 +280,14 @@ export class EmbeddedTaskHost {
     options: TaskRunnerOptions,
     signal?: AbortSignal,
   ): Promise<InvocationOperationResult> {
+    const executionPolicy = resolveTaskExecutionPolicy(this.#env);
     let execution: Awaited<ReturnType<typeof executeRunner>>;
     try {
-      execution = await this.#executeRunner(runnerArgs(qoderCwd, options), process.env, signal);
+      execution = await this.#executeRunner(
+        runnerArgs(qoderCwd, options, executionPolicy),
+        this.#env,
+        signal,
+      );
     } catch (error) {
       await lock.preserveForDiagnosis();
       throw new TaskHostError(
@@ -290,6 +302,7 @@ export class EmbeddedTaskHost {
         version: 1,
         invocationId,
         stage: "runner",
+        executionPolicy,
         exitCode: execution.exitCode,
         envelope: execution.envelope,
       });
