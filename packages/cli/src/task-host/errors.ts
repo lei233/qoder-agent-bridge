@@ -10,9 +10,20 @@ export class TaskHostError extends Error {
   }
 }
 
-export function normalizeHostError(error: unknown): { code: string; message: string } {
+export interface NormalizedHostError {
+  code: string;
+  message: string;
+  diagnosticRef?: string;
+}
+
+export function normalizeHostError(error: unknown): NormalizedHostError {
   if (error instanceof TaskHostError) {
-    return { code: error.code, message: error.message };
+    const diagnosticRef = error.details?.diagnosticRef;
+    return {
+      code: error.code,
+      message: error.message,
+      ...(typeof diagnosticRef === "string" ? { diagnosticRef } : {}),
+    };
   }
   if (error instanceof Error && "code" in error && typeof error.code === "string") {
     return { code: error.code, message: error.message };
