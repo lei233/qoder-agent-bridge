@@ -262,19 +262,19 @@ only the explicit retry strategies in `worktree-review.md`:
 
 Do not use a Task-level `recover` command.
 
-If the user explicitly identifies the delegated Invocation as long running, add
-`--long-task`. Do not pass manual timeout values from the Skill and do not infer
-long-running status from complexity, repository size, prompt text, or elapsed
-time.
+The Task CLI uses one uniform Runner safety ceiling for every Invocation. Do not
+pass a timeout option from the Skill. If the user explicitly identifies the
+delegated Invocation as long running, keep the exact same Task CLI command and
+select the explicit-long **host-tool wait budget** from `protocol.md`. Do not
+infer long-running status from complexity, repository size, prompt text, or
+elapsed time.
 
-Follow `protocol.md` for both parts of long-running execution: the Task CLI
-`--long-task` policy controls the Runner timeout, while the separate Codex
-host-tool wait budget keeps the exact Task CLI invocation blocking for long
-stretches. Until a native MCP Task tool replaces this terminal adapter, do not
-let a live Task CLI session become an asynchronous background workflow, do not
-poll it at short intervals, and do not perform unrelated work between waits.
-The Task Host owns Runner process, timeout, termination, and result-persistence
-mechanics; the Skill owns only this temporary host-call blocking discipline.
+Until a native MCP Task tool replaces this terminal adapter, keep a live Task
+CLI invocation logically blocked: do not convert it into an asynchronous
+background workflow, do not poll it at short intervals, and do not perform
+unrelated work between waits. The Task Host owns Runner process, timeout,
+termination, and result-persistence mechanics; the Skill owns only this
+temporary Codex host-call blocking discipline.
 
 ## Complete the Review Lifecycle
 
