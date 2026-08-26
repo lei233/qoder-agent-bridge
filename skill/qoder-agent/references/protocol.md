@@ -25,19 +25,11 @@ qoder_agent_task.mjs retry --task <task.json> --strategy restart \
 For Skill-driven work use `--prompt-file`; inline `--prompt` is compatibility
 only.
 
-Optional task-facing execution policy:
-
-```text
---long-task
-```
-
-Use `--long-task` only when the user explicitly identifies that Invocation as
-long running. The Task CLI translates this policy into the Runner timeout. The
-Skill must not pass manual timeout values or infer long-running status from
-complexity, repository size, prompt text, or elapsed time.
-
-Low-level Runner configuration such as `--timeout-ms` remains available for
-compatibility/diagnosis but is not part of the normal Skill workflow.
+Task-managed Runner invocations use one uniform safety ceiling, currently the
+Runner maximum of one hour. The Skill does not select or override that timeout,
+and the Task CLI does not expose a long-task mode or manual timeout option.
+Low-level Runner timeout overrides remain available only through the diagnostic
+Runner surface, not through normal Task CLI policy.
 
 Commands that do not invoke Qoder include `start`, `inspect`, `candidate`,
 `prepare-retry`, `discard-retry`, `apply`, `discard`, `fail`, and `get`.
@@ -175,13 +167,14 @@ policy once for the Invocation:
 | Ordinary                  |       200000 ms |          180000 ms |
 | Explicit long task        |       300000 ms |          280000 ms |
 
-Do not use the long-task policy unless the user explicitly classified that
-Invocation as long running. The long host wait policy and the Task CLI
-`--long-task` flag should be selected together for that Invocation. Later rounds
-retain 20000 ms of outer synchronization headroom; the first round also retains
-headroom beyond the initial 15000 ms startup wait. These values exist to keep
-Codex blocked for long stretches and suppress meaningless high-frequency
-polling while Qoder is still working.
+Do not use the explicit-long host wait policy unless the user explicitly
+classified that Invocation as long running. This classification changes only
+how long Codex blocks inside the terminal tool; it does not change the Task CLI
+command or the Runner execution ceiling. Later rounds retain 20000 ms of outer
+synchronization headroom; the first round also retains headroom beyond the
+initial 15000 ms startup wait. These values exist to keep Codex blocked for long
+stretches and suppress meaningless high-frequency polling while Qoder is still
+working.
 
 For the first round, start the exact approved Task CLI command with
 `exec_command.yield_time_ms: 15000`; do not rely on the terminal tool's short
@@ -213,8 +206,8 @@ if (started.exit_code !== undefined) {
 ```
 
 For an explicitly long-running Invocation, change only the outer pragma's
-`yield_time_ms` to `300000`, the inner `write_stdin` wait to `280000`, and add
-`--long-task` to the Task CLI command.
+`yield_time_ms` to `300000` and the inner `write_stdin` wait to `280000`. The Task
+CLI command itself is unchanged.
 
 For every later round, keep the same policy and make exactly one empty-stdin
 wait on the existing session. The ordinary form is:
@@ -257,8 +250,8 @@ truncation/error evidence but must not reproduce or override those mechanics.
 
 ## Compatibility and Diagnosis
 
-`run_qoder.mjs`, `qoder_worktree.mjs`, low-level Task options such as manual
-`--timeout-ms`, and full `task get` output remain available for compatibility or
-mechanical diagnosis. They may expose details intentionally omitted from the
-normal Skill surface. Never use them to bypass Task locking, retry policy,
-Candidate identity, explicit approval, or a fail-closed result.
+`run_qoder.mjs`, `qoder_worktree.mjs`, and full `task get` output remain
+available for compatibility or mechanical diagnosis. The low-level Runner CLI
+may expose manual timeout controls that the Task CLI intentionally does not.
+Never use diagnostic surfaces to bypass Task locking, retry policy, Candidate
+identity, explicit approval, or a fail-closed result.
