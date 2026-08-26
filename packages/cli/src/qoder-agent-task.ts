@@ -298,12 +298,7 @@ export function parseTaskArgs(argv: string[]): ParsedTaskArgs {
     };
   }
   if (command === "retry") {
-    rejectOptions(values, flags, [
-      ...runnerValues,
-      "--strategy",
-      "--worktree",
-      "--preparation",
-    ]);
+    rejectOptions(values, flags, [...runnerValues, "--strategy", "--worktree", "--preparation"]);
     const task = requireValue(values, "--task");
     const parsedStrategy = parseRetryStrategy(values);
     if (parsedStrategy.strategy === "continue") {

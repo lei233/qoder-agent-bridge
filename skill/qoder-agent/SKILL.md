@@ -45,7 +45,7 @@ detailed procedure back into this file or improvise a competing workflow.
 | ------------------------------------------------------------------------------ | --------------------------------- | --------------------------------------------------------------------------------------- |
 | Any code-changing Git task                                                     | `references/worktree-review.md`   | Task lifecycle, Candidate review, corrections, retry decisions, apply, discard, cleanup |
 | OpenSpec, project rules, external context, or Skill guidance                   | `references/delegation-prompt.md` | Context selection, compilation, and preview fidelity                                    |
-| Before every Task command that invokes Runner, or when interpreting its result | `references/protocol.md`          | Task/Runner arguments, host blocking waits, output evidence, errors, and lifecycle       |
+| Before every Task command that invokes Runner, or when interpreting its result | `references/protocol.md`          | Task/Runner arguments, host blocking waits, output evidence, errors, and lifecycle      |
 
 For a simple non-code task, load only the references whose conditions apply.
 For code changes, `worktree-review.md` and `protocol.md` are always required;

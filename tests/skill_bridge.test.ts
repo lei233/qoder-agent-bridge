@@ -340,15 +340,7 @@ describe("Skill-facing Task CLI parsing", () => {
       parseTaskArgs(["run", "--task", "/tmp/task.json", "--prompt", "work", "--long-task"]),
     ).toThrow(/Unsupported/);
     expect(() =>
-      parseTaskArgs([
-        "run",
-        "--task",
-        "/tmp/task.json",
-        "--prompt",
-        "work",
-        "--timeout-ms",
-        "123",
-      ]),
+      parseTaskArgs(["run", "--task", "/tmp/task.json", "--prompt", "work", "--timeout-ms", "123"]),
     ).toThrow(/Unsupported/);
   });
 
