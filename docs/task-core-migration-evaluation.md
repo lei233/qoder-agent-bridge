@@ -68,6 +68,11 @@ manual Runner timeout milliseconds
 process-group / PID / kill mechanics
 ```
 
+Task-managed invocations now use one uniform Runner safety ceiling, currently
+the Runner maximum of one hour. The Task CLI does not expose a long-task mode or
+manual timeout option. Low-level Runner timeout overrides remain diagnostic
+mechanics outside the normal Skill surface.
+
 One host-mechanical compatibility shim intentionally remains: while Codex calls
 the Task CLI through a terminal rather than a native Task/MCP tool, the Skill
 keeps explicit long `exec_command` / `write_stdin` wait budgets. Those waits are
@@ -84,9 +89,11 @@ explicit long: 300000 ms outer / 280000 ms session wait
 ```
 
 The first terminal round uses a 15000 ms startup yield and then at most one long
-wait on the same live session per outer tool call. A future MCP Task tool with
-native long-lived blocking/progress semantics should remove this shim rather
-than reproducing the constants in Task Core or Task Manager domain state.
+wait on the same live session per outer tool call. Explicit-long classification
+changes only this Codex wait policy; it does not change the Task CLI command or
+Runner ceiling. A future MCP Task tool with native long-lived blocking/progress
+semantics should remove this shim rather than reproducing the constants in Task
+Core or Task Manager domain state.
 
 The remaining `workspace.cwd` is also intentional. The Skill needs one concrete
 filesystem boundary for three policy responsibilities that must not move into
