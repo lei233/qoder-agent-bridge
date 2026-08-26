@@ -31,7 +31,7 @@ start → inspect → run → candidate
 - 一等 Candidate 身份，把“已经审阅的 patch”和“之后实际 apply 的 patch”绑定起来。
 - 明确的失败后 retry 策略：继续可信半成品，或在经批准的新 workspace 中干净重启。
 - Task-facing Skill 接口，隐藏 Worktree session 路径、reopen/retry-of 机械细节、Runner
-  进程细节以及手工 timeout/polling plumbing。
+  进程细节以及手工 Runner timeout plumbing。
 
 现有 one-shot Runner 与 Worktree Core 仍然负责底层执行与隔离安全；它们被包装复用，
 没有被 Task Core 重写。
@@ -107,8 +107,10 @@ node skill/qoder-agent/scripts/qoder_agent_task.mjs run \
   --prompt-file /absolute/path/to/delegation-brief.md
 ```
 
-只有用户显式说明该 Invocation 是长任务时才增加 `--long-task`；具体 Runner timeout
-由 Task CLI 映射，Skill 不再手写毫秒值。
+所有 Task-managed Runner Invocation 都使用同一个 1 小时安全上限。Task CLI 不再提供
+长任务模式，也不提供手工 timeout 参数。只有当用户显式说明某个 Invocation 是长任务
+时，Codex 才改变终端工具的阻塞等待策略，让同一个 Task CLI 调用持续保持逻辑阻塞，
+而不是转成后台轮询工作流。具体等待契约见下文的 `protocol.md`。
 
 Invocation 成功后冻结不可变 Candidate：
 
@@ -150,13 +152,14 @@ Skill 中可移植的工程规则，编译自包含的 `Qoder Delegation Brief v
 - [worktree-review.md](skill/qoder-agent/references/worktree-review.md)：Candidate 审阅、
   repair/retry、apply 与 discard；
 - [protocol.md](skill/qoder-agent/references/protocol.md)：Task-facing Runner evidence 与
-  command-session 等待契约。
+  pre-MCP command-session 阻塞等待契约。
 
 ## 低层兼容与诊断
 
 生成的 `run_qoder.mjs` 与 `qoder_worktree.mjs` 继续保留用于兼容和机械诊断；完整的
-`task get` 也是诊断接口。它们可能暴露正常 Skill 流程刻意隐藏的低层细节，不能用来
-绕过 Task lock、Candidate identity、显式审批、retry 策略或 fail-closed 结果。
+`task get` 也是诊断接口。低层 Runner CLI 可以暴露正常 Task CLI 刻意隐藏的 timeout
+控制。诊断接口不能用来绕过 Task lock、Candidate identity、显式审批、retry 策略或
+fail-closed 结果。
 
 ## 开发检查
 
