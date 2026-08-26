@@ -2668,14 +2668,13 @@ const VALUE_OPTIONS = /* @__PURE__ */ new Set([
 	"--prompt-file",
 	"--qodercli-path",
 	"--model",
-	"--timeout-ms",
 	"--max-model-request-retries",
 	"--strategy",
 	"--worktree",
 	"--preparation",
 	"--candidate"
 ]);
-const FLAG_OPTIONS = /* @__PURE__ */ new Set(["--long-task"]);
+const FLAG_OPTIONS = /* @__PURE__ */ new Set();
 function isTaskCommand(value) {
 	return value !== void 0 && TASK_COMMANDS.includes(value);
 }
@@ -2690,7 +2689,7 @@ function rejectOptions(values, flags, allowedValues, allowedFlags = []) {
 	const allowedFlagSet = new Set(allowedFlags);
 	for (const flag of flags) if (!allowedFlagSet.has(flag)) throw new TaskHostError("invalid_input", `${flag} is not valid for this Task command.`);
 }
-function runnerOptions(values, flags) {
+function runnerOptions(values) {
 	const prompt = values["--prompt"];
 	const promptFile = values["--prompt-file"];
 	if (prompt === void 0 === (promptFile === void 0)) throw new TaskHostError("invalid_input", "Exactly one of --prompt or --prompt-file is required for Task execution.");
@@ -2699,13 +2698,12 @@ function runnerOptions(values, flags) {
 		if (Buffer.byteLength(prompt, "utf8") > 65536) throw new TaskHostError("invalid_input", "--prompt exceeds the 64 KiB limit.");
 	}
 	if (promptFile !== void 0 && promptFile.trim() === "") throw new TaskHostError("invalid_input", "--prompt-file must be non-empty.");
-	if (flags.has("--long-task") && values["--timeout-ms"] !== void 0) throw new TaskHostError("invalid_input", "--long-task cannot be combined with the low-level --timeout-ms override.");
 	return {
 		prompt,
 		promptFile,
 		qodercliPath: values["--qodercli-path"],
 		model: values["--model"],
-		timeoutMs: flags.has("--long-task") ? "3600000" : values["--timeout-ms"],
+		timeoutMs: String(MAX_TIMEOUT_MS),
 		maxModelRequestRetries: values["--max-model-request-retries"]
 	};
 }
@@ -2801,13 +2799,12 @@ function parseTaskArgs(argv) {
 		values[option] = value;
 		index += 1;
 	}
-	const runnerFlags = [
+	const runnerValues = [
 		"--task",
 		"--prompt",
 		"--prompt-file",
 		"--qodercli-path",
 		"--model",
-		"--timeout-ms",
 		"--max-model-request-retries"
 	];
 	if (command === "start") {
@@ -2818,20 +2815,20 @@ function parseTaskArgs(argv) {
 		};
 	}
 	if (command === "run" || command === "repair") {
-		rejectOptions(values, flags, runnerFlags, ["--long-task"]);
+		rejectOptions(values, flags, runnerValues);
 		return {
 			command,
 			task: requireValue(values, "--task"),
-			runner: runnerOptions(values, flags)
+			runner: runnerOptions(values)
 		};
 	}
 	if (command === "retry") {
 		rejectOptions(values, flags, [
-			...runnerFlags,
+			...runnerValues,
 			"--strategy",
 			"--worktree",
 			"--preparation"
-		], ["--long-task"]);
+		]);
 		const task = requireValue(values, "--task");
 		if (parseRetryStrategy(values).strategy === "continue") {
 			if (values["--preparation"] !== void 0) throw new TaskHostError("invalid_input", "--preparation is valid only for restart retry.");
@@ -2841,7 +2838,7 @@ function parseTaskArgs(argv) {
 				strategy: "continue",
 				worktree: "current",
 				preparation: void 0,
-				runner: runnerOptions(values, flags)
+				runner: runnerOptions(values)
 			};
 		}
 		return {
@@ -2850,7 +2847,7 @@ function parseTaskArgs(argv) {
 			strategy: "restart",
 			worktree: "successor",
 			preparation: requireValue(values, "--preparation"),
-			runner: runnerOptions(values, flags)
+			runner: runnerOptions(values)
 		};
 	}
 	if (command === "discard-retry") {
