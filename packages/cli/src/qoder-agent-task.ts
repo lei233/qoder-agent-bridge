@@ -7,11 +7,8 @@ import { PROMPT_LIMIT_BYTES, type RunnerEnvelope, type Task } from "@qoder-agent
 import {
   EmbeddedTaskHost,
   TaskHostError,
-  discardPreparedSuccessorRetry,
   inspectTaskWorkspace,
   normalizeHostError,
-  prepareSuccessorRetry,
-  runPreparedSuccessorRetry,
   type InvocationOperationResult,
   type SkillBridgeDependencies,
   type TaskResolutionResult,
@@ -385,19 +382,18 @@ export async function executeTaskCommand(
     };
   }
   if (parsed.command === "prepare-retry") {
-    const result = await prepareSuccessorRetry(parsed.task, bridgeDependencies);
+    const result = await host.prepareSuccessorRetry(parsed.task);
     return { status: "succeeded", operation: "prepare-retry", ...result };
   }
   if (parsed.command === "retry") {
     const result =
       parsed.strategy === "continue"
-        ? await host.retry(parsed.task, "current", parsed.runner, options.signal)
-        : await runPreparedSuccessorRetry(
+        ? await host.retry(parsed.task, parsed.runner, options.signal)
+        : await host.runPreparedSuccessorRetry(
             parsed.task,
             parsed.preparation,
             parsed.runner,
             options.signal,
-            bridgeDependencies,
           );
     return {
       status: result.runner?.status === "succeeded" ? "succeeded" : "failed",
@@ -407,7 +403,7 @@ export async function executeTaskCommand(
     };
   }
   if (parsed.command === "discard-retry") {
-    await discardPreparedSuccessorRetry(parsed.task, parsed.preparation, bridgeDependencies);
+    await host.discardPreparedSuccessorRetry(parsed.task, parsed.preparation);
     return {
       status: "succeeded",
       operation: "discard-retry",
