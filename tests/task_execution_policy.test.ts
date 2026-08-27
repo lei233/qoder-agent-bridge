@@ -104,10 +104,7 @@ describe("Task Host execution policy", () => {
     ).toEqual({
       timeoutMs: DEFAULT_TASK_TIMEOUT_MS,
       maxModelRequestRetries: DEFAULT_TASK_MAX_MODEL_REQUEST_RETRIES,
-      fallbacks: [
-        "invalid QODER_TASK_TIMEOUT_MS",
-        "invalid QODER_TASK_MAX_MODEL_REQUEST_RETRIES",
-      ],
+      fallbacks: ["invalid QODER_TASK_TIMEOUT_MS", "invalid QODER_TASK_MAX_MODEL_REQUEST_RETRIES"],
     });
   });
 
@@ -141,14 +138,14 @@ describe("Task Host execution policy", () => {
       timeoutMs: String(DEFAULT_TASK_TIMEOUT_MS),
       maxModelRequestRetries: String(DEFAULT_TASK_MAX_MODEL_REQUEST_RETRIES),
     });
-    const artifact = JSON.parse(await readFile(result.resultRef, "utf8")) as Record<string, unknown>;
+    const artifact = JSON.parse(await readFile(result.resultRef, "utf8")) as Record<
+      string,
+      unknown
+    >;
     expect(artifact.executionPolicy).toEqual({
       timeoutMs: DEFAULT_TASK_TIMEOUT_MS,
       maxModelRequestRetries: DEFAULT_TASK_MAX_MODEL_REQUEST_RETRIES,
-      fallbacks: [
-        "invalid QODER_TASK_TIMEOUT_MS",
-        "invalid QODER_TASK_MAX_MODEL_REQUEST_RETRIES",
-      ],
+      fallbacks: ["invalid QODER_TASK_TIMEOUT_MS", "invalid QODER_TASK_MAX_MODEL_REQUEST_RETRIES"],
     });
 
     await host.discard(started.taskStatePath);
@@ -160,8 +157,12 @@ describe("Task execution CLI boundary", () => {
     const base = ["run", "--task", "/tmp/task.json", "--prompt", "change"];
     expect(() => parseTaskArgs([...base, "--timeout-ms", "1"])).toThrow(/Unsupported/);
     expect(() => parseTaskArgs([...base, "--long-task"])).toThrow(/Unsupported/);
-    expect(() => parseTaskArgs([...base, "--max-model-request-retries", "9"])).toThrow(/Unsupported/);
-    expect(() => parseTaskArgs([...base, "--qodercli-path", "/tmp/qodercli"])).toThrow(/Unsupported/);
+    expect(() => parseTaskArgs([...base, "--max-model-request-retries", "9"])).toThrow(
+      /Unsupported/,
+    );
+    expect(() => parseTaskArgs([...base, "--qodercli-path", "/tmp/qodercli"])).toThrow(
+      /Unsupported/,
+    );
   });
 
   it("keeps model as an Invocation preference", () => {

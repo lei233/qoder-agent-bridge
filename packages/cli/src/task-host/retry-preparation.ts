@@ -93,6 +93,8 @@ export async function writePreparedRetryMetadata(
   );
 }
 
-export function preparedRetryMetadata(input: Omit<PreparedRetryMetadata, "version">): PreparedRetryMetadata {
+export function preparedRetryMetadata(
+  input: Omit<PreparedRetryMetadata, "version">,
+): PreparedRetryMetadata {
   return { version: PREPARED_RETRY_METADATA_VERSION, ...input };
 }

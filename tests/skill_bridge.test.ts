@@ -190,7 +190,10 @@ describe("Skill task bridge", () => {
       status: "succeeded",
       worktreeSessionId: "wt-successor",
     });
-    const artifact = JSON.parse(await readFile(retried.resultRef, "utf8")) as Record<string, unknown>;
+    const artifact = JSON.parse(await readFile(retried.resultRef, "utf8")) as Record<
+      string,
+      unknown
+    >;
     expect(artifact.executionPolicy).toEqual({
       timeoutMs: 120000,
       maxModelRequestRetries: 5,
@@ -209,7 +212,11 @@ describe("Skill task bridge", () => {
 
     await host.fail(started.taskStatePath);
     await expect(
-      host.runPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId, runnerOptions()),
+      host.runPreparedSuccessorRetry(
+        started.taskStatePath,
+        prepared.preparationId,
+        runnerOptions(),
+      ),
     ).rejects.toMatchObject({ code: "retry_preparation_stale" });
     await expect(
       host.discardPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId),
@@ -228,7 +235,11 @@ describe("Skill task bridge", () => {
     await writeFile(join(prepared.workspace.cwd, "tracked.txt"), "drifted-after-disclosure\n");
 
     await expect(
-      host.runPreparedSuccessorRetry(started.taskStatePath, prepared.preparationId, runnerOptions()),
+      host.runPreparedSuccessorRetry(
+        started.taskStatePath,
+        prepared.preparationId,
+        runnerOptions(),
+      ),
     ).rejects.toMatchObject({ code: "retry_preparation_changed" });
 
     await writeFile(join(prepared.workspace.cwd, "tracked.txt"), "base\n");

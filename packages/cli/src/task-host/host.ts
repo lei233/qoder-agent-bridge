@@ -253,7 +253,9 @@ async function validatePreparationOwnership(
   }
 
   const successor = await inspect(metadata.successorStatePath);
-  if ((await realpath(successor.session.statePath)) !== (await realpath(metadata.successorStatePath))) {
+  if (
+    (await realpath(successor.session.statePath)) !== (await realpath(metadata.successorStatePath))
+  ) {
     throw new TaskHostError(
       "retry_preparation_mismatch",
       "Prepared successor retry state does not match its Task-owned metadata.",
@@ -584,13 +586,7 @@ export class EmbeddedTaskHost {
           await this.#disposeWorktree(prepared.statePath, true);
           deleteTaskRoot = true;
         } catch (cleanupError) {
-          await this.#throwAmbiguousStart(
-            store,
-            lock,
-            error,
-            cleanupError,
-            prepared.statePath,
-          );
+          await this.#throwAmbiguousStart(store, lock, error, cleanupError, prepared.statePath);
         }
       }
       throw error;
@@ -918,10 +914,7 @@ export class EmbeddedTaskHost {
     });
   }
 
-  async discardPreparedSuccessorRetry(
-    taskStatePath: string,
-    preparationId: string,
-  ): Promise<void> {
+  async discardPreparedSuccessorRetry(taskStatePath: string, preparationId: string): Promise<void> {
     return this.#withLock(taskStatePath, async (store, lock) => {
       const { task, metadata } = await validatePreparationOwnership(
         store,
