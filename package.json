@@ -1,6 +1,6 @@
 {
   "name": "qoder-agent-bridge",
-  "version": "0.2.0-beta.1",
+  "version": "0.2.0-beta.2",
   "private": true,
   "description": "Bridge Qoder into your agent workflow through Skills and CLI.",
   "license": "MIT",
