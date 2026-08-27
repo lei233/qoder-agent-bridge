@@ -90,7 +90,7 @@ describe("Qoder Skill Task migration", () => {
     const packageJson = await source("package.json");
 
     expect(config).not.toContain("skill/qoder-agent/scripts");
-    expect(builder).toContain('dist/skills/qoder-agent');
+    expect(builder).toContain("dist/skills/qoder-agent");
     expect(builder).toContain('"SKILL.md", "agents", "references"');
     expect(builder).toContain("for (const [name, entry] of Object.entries(standaloneEntries))");
     expect(builder).toContain("entry: { [name]: entry }");
@@ -100,7 +100,35 @@ describe("Qoder Skill Task migration", () => {
     expect(validator).toContain('const directories = ["agents", "references"]');
     expect(validator).toContain('const result = ["SKILL.md"]');
     expect(packageJson).toContain('"skill:build": "node scripts/build_skill.mjs"');
-    expect(packageJson).toContain('"skill:validate": "node scripts/validate_skill_distribution.mjs"');
+    expect(packageJson).toContain(
+      '"skill:validate": "node scripts/validate_skill.mjs dist/skills/qoder-agent && node scripts/validate_skill_distribution.mjs"',
+    );
     expect(packageJson).not.toContain("skill:artifacts:check");
+  });
+
+  it("packs one installable ZIP and releases only exact version tags on Linux", async () => {
+    const packer = await source("scripts/pack_skill.mjs");
+    const packageJson = await source("package.json");
+    const ci = await source(".github/workflows/ci.yml");
+    const release = await source(".github/workflows/release.yml");
+
+    expect(packageJson).toContain('"skill:pack": "node scripts/pack_skill.mjs"');
+    expect(packer).toContain("qoder-agent-${expectedTag}.zip");
+    expect(packer).toContain("Formal releases require a clean Git checkout");
+    expect(packer).toContain("Formal release tag ${tag} must point at HEAD");
+    expect(packer).toContain('"qoder-agent/manifest.json"');
+    expect(packer).toContain("unzip");
+
+    expect(ci).toContain("runs-on: ubuntu-latest");
+    expect(ci).not.toContain("matrix:");
+    expect(ci).toContain("pnpm skill:pack");
+
+    expect(release).toContain('tags:\n      - "v*"');
+    expect(release).not.toContain("workflow_dispatch");
+    expect(release).toContain('expected="v${version}"');
+    expect(release).toContain("node scripts/pack_skill.mjs --release");
+    expect(release).toContain("gh release create");
+    expect(release).toContain("--draft");
+    expect(release).toContain("gh release verify");
   });
 });
