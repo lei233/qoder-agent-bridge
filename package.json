@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsdown && node scripts/validate_build.mjs",
     "skill:build": "node scripts/build_skill.mjs",
-    "skill:validate": "node scripts/validate_skill_distribution.mjs",
+    "skill:validate": "node scripts/validate_skill.mjs dist/skills/qoder-agent && node scripts/validate_skill_distribution.mjs",
+    "skill:pack": "node scripts/pack_skill.mjs",
     "skill:check": "pnpm skill:build && pnpm skill:validate && pnpm test:run",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
