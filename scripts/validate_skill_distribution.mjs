@@ -12,7 +12,9 @@ const scripts = ["qoder_agent_task.mjs", "qoder_worktree.mjs", "run_qoder.mjs"];
 
 const manifest = JSON.parse(await readFile(resolve(distRoot, "manifest.json"), "utf8"));
 if (manifest.license !== "MIT") throw new Error("Skill manifest license must be MIT.");
-if (manifest.version !== JSON.parse(await readFile(resolve(root, "package.json"), "utf8")).version) {
+if (
+  manifest.version !== JSON.parse(await readFile(resolve(root, "package.json"), "utf8")).version
+) {
   throw new Error("Skill manifest version must match root package.json.version.");
 }
 
@@ -36,7 +38,8 @@ for (const entry of manifest.files) {
 for (const authoredPath of await authoredFiles()) {
   const source = await readFile(resolve(sourceRoot, authoredPath));
   const distributed = await readFile(resolve(distRoot, authoredPath));
-  if (!source.equals(distributed)) throw new Error(`Authored Skill file changed during packaging: ${authoredPath}`);
+  if (!source.equals(distributed))
+    throw new Error(`Authored Skill file changed during packaging: ${authoredPath}`);
 }
 
 const distributedScripts = (await readdir(resolve(distRoot, "scripts")))
