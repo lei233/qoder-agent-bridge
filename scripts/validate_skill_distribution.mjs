@@ -59,10 +59,10 @@ for (const script of scripts) {
 }
 
 async function authoredFiles() {
-  const roots = ["SKILL.md", "agents", "references"];
-  const result = [];
-  for (const authoredRoot of roots) {
-    const path = resolve(sourceRoot, authoredRoot);
+  const directories = ["agents", "references"];
+  const result = ["SKILL.md"];
+  for (const authoredDirectory of directories) {
+    const path = resolve(sourceRoot, authoredDirectory);
     const files = await listFiles(path);
     result.push(...files.map((file) => relative(sourceRoot, file).split(sep).join("/")));
   }
