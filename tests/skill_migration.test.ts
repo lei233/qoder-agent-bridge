@@ -131,6 +131,11 @@ describe("Qoder Skill Task migration", () => {
     expect(release).toContain("node scripts/pack_skill.mjs --release");
     expect(release).toContain("gh release create");
     expect(release).toContain("--draft");
+    expect(release).toContain('gh release view "${tag}" --json isImmutable');
+    expect(release).toContain("for attempt in $(seq 1 18)");
+    expect(release).toContain("sleep 5");
     expect(release).toContain("gh release verify");
+    expect(release).toContain("Leaving the published release untouched");
+    expect(release).not.toContain('gh release delete "${tag}"');
   });
 });
