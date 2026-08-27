@@ -243,12 +243,23 @@ Git; do not commit generated Skill bundles back into `skill/qoder-agent/`.
 
 ## Release model
 
-`package.json.version` is the sole release version authority. A formal release
-is triggered only by pushing the exact `v<version>` tag, including prerelease
-versions such as `v0.2.0-beta.1`. The tag must point at the clean checkout being
-built. The release workflow rebuilds and validates the distribution, creates
-only the installable Skill ZIP, attaches it to a draft GitHub Release, and then
-publishes the release.
+`package.json.version` remains the sole release version authority. Version bumps
+are managed with `bumpp`; from a clean, up-to-date release branch run:
+
+```sh
+pnpm release
+```
+
+`bumpp` prompts for the next SemVer version, updates the root `package.json`,
+creates a `chore: release v<version>` commit, creates the exact `v<version>` tag,
+and pushes both commit and tag. Do not use recursive mode: the private workspace
+packages intentionally do not carry independent versions.
+
+The pushed `v<version>` tag triggers the Release Skill workflow, including
+prerelease versions such as `v0.2.0-beta.1`. The workflow requires the tag to
+match `package.json.version` exactly and point at the clean checkout being built.
+It rebuilds and validates the distribution, creates only the installable Skill
+ZIP, attaches it to a draft GitHub Release, and then publishes the release.
 
 Repository **Release immutability must be enabled** before publishing formal
 releases. The workflow verifies the published release with GitHub CLI and will

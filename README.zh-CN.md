@@ -224,10 +224,22 @@ standalone 脚本组装到 `dist/skills/qoder-agent/`。`dist/` 是生成目录�
 
 ## 发布模型
 
-`package.json.version` 是唯一的 release version authority。正式发布只允许由精确的
-`v<version>` tag 触发，也支持 `v0.2.0-beta.1` 这类 prerelease tag。tag 必须指向当前
-被构建的 clean checkout。Release workflow 会重新构建并验证 distribution，只生成可
-安装 Skill ZIP，把它先附加到 draft GitHub Release，再发布该 Release。
+`package.json.version` 仍然是唯一的 release version authority。版本变更统一由
+`bumpp` 管理；在 clean 且已同步远端的发布分支上执行：
+
+```sh
+pnpm release
+```
+
+`bumpp` 会交互选择下一个 SemVer 版本，更新根 `package.json`，创建
+`chore: release v<version>` commit，创建精确的 `v<version>` tag，并 push commit 与
+tag。不要使用 recursive 模式；私有 workspace package 按设计不维护独立版本号。
+
+push 的 `v<version>` tag 会触发 Release Skill workflow，也支持
+`v0.2.0-beta.1` 这类 prerelease。workflow 会再次要求 tag 与
+`package.json.version` 精确一致，并且 tag 必须指向当前被构建的 clean checkout。
+随后它重新构建并验证 distribution，只生成可安装 Skill ZIP，把它先附加到 draft
+GitHub Release，再发布该 Release。
 
 正式发布前必须在仓库中启用 **Release immutability**。workflow 会通过 GitHub CLI
 验证发布后的 Release 是否真的不可变；如果仍是 mutable release，则任务失败，不会把它
