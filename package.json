@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "tsdown && node scripts/validate_build.mjs",
+    "release": "bumpp",
     "skill:build": "node scripts/build_skill.mjs",
     "skill:validate": "node scripts/validate_skill.mjs dist/skills/qoder-agent && node scripts/validate_skill_distribution.mjs",
     "skill:pack": "node scripts/pack_skill.mjs",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
+    "bumpp": "^12.2.1",
     "oxfmt": "^0.62.0",
     "oxlint": "^1.77.0",
     "tsdown": "^0.22.14",
