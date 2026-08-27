@@ -95,6 +95,8 @@ describe("Qoder Skill Task migration", () => {
     expect(builder).toContain("manifest.json");
     expect(validator).toContain("Skill manifest file set does not match");
     expect(validator).toContain("must inline @qoder-agent-bridge/core");
+    expect(validator).toContain('const directories = ["agents", "references"]');
+    expect(validator).toContain('const result = ["SKILL.md"]');
     expect(packageJson).toContain('"skill:build": "node scripts/build_skill.mjs"');
     expect(packageJson).toContain('"skill:validate": "node scripts/validate_skill_distribution.mjs"');
     expect(packageJson).not.toContain("skill:artifacts:check");
