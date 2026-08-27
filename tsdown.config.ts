@@ -30,49 +30,4 @@ export default defineConfig([
       neverBundle: ["@qoder-agent-bridge/core"],
     },
   },
-  {
-    entry: {
-      run_qoder: "packages/cli/src/run-qoder.ts",
-    },
-    outDir: "skill/qoder-agent/scripts",
-    outExtensions: () => ({ js: ".mjs" }),
-    format: ["esm"],
-    dts: false,
-    sourcemap: false,
-    treeshake: false,
-    clean: false,
-    deps: {
-      alwaysBundle: ["@qoder-agent-bridge/core"],
-    },
-  },
-  {
-    entry: {
-      qoder_worktree: "packages/cli/src/qoder-worktree.ts",
-    },
-    outDir: "skill/qoder-agent/scripts",
-    outExtensions: () => ({ js: ".mjs" }),
-    format: ["esm"],
-    dts: false,
-    sourcemap: false,
-    treeshake: false,
-    clean: false,
-    deps: {
-      alwaysBundle: ["@qoder-agent-bridge/core"],
-    },
-  },
-  {
-    entry: {
-      qoder_agent_task: "packages/cli/src/qoder-agent-task.ts",
-    },
-    outDir: "skill/qoder-agent/scripts",
-    outExtensions: () => ({ js: ".mjs" }),
-    format: ["esm"],
-    dts: false,
-    sourcemap: false,
-    treeshake: false,
-    clean: false,
-    deps: {
-      alwaysBundle: ["@qoder-agent-bridge/core"],
-    },
-  },
 ]);
