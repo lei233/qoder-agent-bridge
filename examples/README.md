@@ -1,7 +1,8 @@
 # Runner example
 
-Use this example only with a disposable directory outside the project. First,
-use a trusted editor or non-shell file-writing tool to create the private brief
+Use this example only with a disposable directory outside the project. Build the
+Skill distribution first with `pnpm skill:build`, then use a trusted editor or
+non-shell file-writing tool to create the private brief
 `/absolute/path/to/qoder-verification-brief.md` outside the fixture:
 
 ```sh
@@ -13,7 +14,7 @@ git -C "$fixture" config user.email "qoder-fixture@example.invalid"
 git -C "$fixture" add example.txt
 git -C "$fixture" commit -m baseline
 
-node skill/qoder-agent/scripts/run_qoder.mjs \
+node dist/skills/qoder-agent/scripts/run_qoder.mjs \
   --cwd "$fixture" \
   --prompt-file /absolute/path/to/qoder-verification-brief.md
 
