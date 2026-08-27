@@ -7,7 +7,7 @@ import { build } from "tsdown";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(import.meta.dirname, "..");
-const sourceRoot = resolve(root, "skill/qoder-agent");
+const sourceRoot = resolve(root, "skills/qoder-agent");
 const distRoot = resolve(root, "dist/skills/qoder-agent");
 const scriptsRoot = resolve(distRoot, "scripts");
 const authoredRoots = ["SKILL.md", "agents", "references"];
