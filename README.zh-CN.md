@@ -93,8 +93,8 @@ cp -R qoder-agent /path/to/project/.codex/skills/qoder-agent
 
 ## 从源码构建可安装 Skill
 
-Skill authoring source 只包含 `skill/qoder-agent/SKILL.md`、
-`skill/qoder-agent/agents/**` 与 `skill/qoder-agent/references/**`。生成后的 standalone
+Skill authoring source 只包含 `skills/qoder-agent/SKILL.md`、
+`skills/qoder-agent/agents/**` 与 `skills/qoder-agent/references/**`。生成后的 standalone
 脚本不会回写到这个 source tree。
 
 从源码 checkout 构建：
@@ -172,7 +172,7 @@ node "$QODER_AGENT_SKILL/scripts/qoder_agent_task.mjs" apply \
 ```
 
 审查修正与失败后 retry 规则见
-[skill/qoder-agent/references/worktree-review.md](skill/qoder-agent/references/worktree-review.md)。
+[skills/qoder-agent/references/worktree-review.md](skills/qoder-agent/references/worktree-review.md)。
 Task-level retry 词汇是：
 
 ```text
@@ -190,12 +190,12 @@ Skill 中可移植的工程规则，编译自包含的 `Qoder Delegation Brief v
 
 权威说明：
 
-- [skill/qoder-agent/SKILL.md](skill/qoder-agent/SKILL.md)：协作、审批与整体策略；
-- [delegation-prompt.md](skill/qoder-agent/references/delegation-prompt.md)：上下文编译与
+- [skills/qoder-agent/SKILL.md](skills/qoder-agent/SKILL.md)：协作、审批与整体策略；
+- [delegation-prompt.md](skills/qoder-agent/references/delegation-prompt.md)：上下文编译与
   preview fidelity；
-- [worktree-review.md](skill/qoder-agent/references/worktree-review.md)：Candidate 审阅、
+- [worktree-review.md](skills/qoder-agent/references/worktree-review.md)：Candidate 审阅、
   repair/retry、apply 与 discard；
-- [protocol.md](skill/qoder-agent/references/protocol.md)：Task-facing Runner evidence 与
+- [protocol.md](skills/qoder-agent/references/protocol.md)：Task-facing Runner evidence 与
   pre-MCP command-session 阻塞等待契约。
 
 ## 低层兼容与诊断
@@ -220,7 +220,7 @@ pnpm skill:pack
 维护源码位于 `packages/core` 和 `packages/cli` 的 TypeScript 文件中。`pnpm build` 只构建
 package outputs；`pnpm skill:build` 会把 authored Skill 文件和三个分别独立 bundle 的
 standalone 脚本组装到 `dist/skills/qoder-agent/`。`dist/` 是生成目录并被 Git 忽略；
-不要再把生成的 Skill bundle 提交回 `skill/qoder-agent/`。
+不要再把生成的 Skill bundle 提交回 `skills/qoder-agent/`。
 
 ## 发布模型
 
