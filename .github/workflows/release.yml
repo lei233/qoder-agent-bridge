@@ -1,0 +1,106 @@
+name: Release Skill
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged revision
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.18.0
+          package-manager-cache: false
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.4 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -e "const fs=require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync('package.json','utf8')).version)")"
+          expected="v${version}"
+          if [[ "${GITHUB_REF_TYPE}" != "tag" || "${GITHUB_REF_NAME}" != "${expected}" ]]; then
+            echo "Release tag must be exactly ${expected}; got ${GITHUB_REF_NAME}." >&2
+            exit 1
+          fi
+
+      - name: Check archive tools
+        run: |
+          command -v zip
+          command -v unzip
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Build and pack formal Skill release
+        run: node scripts/pack_skill.mjs --release
+
+      - name: Run tests
+        run: pnpm test:run
+
+      - name: Publish immutable GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          asset="dist/releases/qoder-agent-${tag}.zip"
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists; refusing to replace or modify it." >&2
+            exit 1
+          fi
+
+          prerelease_args=()
+          if [[ "${version}" == *-* ]]; then
+            prerelease_args+=(--prerelease)
+          fi
+
+          gh release create "${tag}" \
+            --verify-tag \
+            --draft \
+            --title "${tag}" \
+            --generate-notes \
+            "${prerelease_args[@]}"
+          gh release upload "${tag}" "${asset}"
+          gh release edit "${tag}" --draft=false
+
+          if ! gh release verify "${tag}"; then
+            echo "Release ${tag} is not immutable. Enable repository release immutability before retrying." >&2
+            gh release delete "${tag}" --yes || true
+            exit 1
+          fi
