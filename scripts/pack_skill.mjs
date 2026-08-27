@@ -65,9 +65,13 @@ async function verifyReleaseCheckout(tag) {
 
   let tagCommit;
   try {
-    ({ stdout: tagCommit } = await execFileAsync("git", ["rev-list", "-n", "1", `refs/tags/${tag}`], {
-      cwd: root,
-    }));
+    ({ stdout: tagCommit } = await execFileAsync(
+      "git",
+      ["rev-list", "-n", "1", `refs/tags/${tag}`],
+      {
+        cwd: root,
+      },
+    ));
   } catch {
     throw new Error(`Formal release tag ${tag} does not exist.`);
   }
