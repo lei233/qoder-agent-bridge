@@ -99,8 +99,26 @@ jobs:
           gh release upload "${tag}" "${asset}"
           gh release edit "${tag}" --draft=false
 
-          if ! gh release verify "${tag}"; then
-            echo "Release ${tag} is not immutable. Enable repository release immutability before retrying." >&2
-            gh release delete "${tag}" --yes || true
+          immutable="$(gh release view "${tag}" --json isImmutable --jq '.isImmutable')"
+          if [[ "${immutable}" != "true" ]]; then
+            echo "Release ${tag} was published but is not immutable. Leaving it untouched for diagnosis." >&2
+            exit 1
+          fi
+
+          verified=false
+          for attempt in $(seq 1 18); do
+            if gh release verify "${tag}"; then
+              verified=true
+              break
+            fi
+
+            if [[ "${attempt}" -lt 18 ]]; then
+              echo "Release ${tag} is immutable; waiting for its attestation (${attempt}/18)."
+              sleep 5
+            fi
+          done
+
+          if [[ "${verified}" != "true" ]]; then
+            echo "Release ${tag} is immutable, but its attestation was not available after 90 seconds. Leaving the published release untouched." >&2
             exit 1
           fi
