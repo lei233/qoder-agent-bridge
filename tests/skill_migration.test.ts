@@ -10,9 +10,9 @@ async function source(path: string): Promise<string> {
 
 describe("Qoder Skill Task migration", () => {
   it("uses only the task-aware CLI for the normal Skill lifecycle", async () => {
-    const skill = await source("skill/qoder-agent/SKILL.md");
-    const review = await source("skill/qoder-agent/references/worktree-review.md");
-    const protocol = await source("skill/qoder-agent/references/protocol.md");
+    const skill = await source("skills/qoder-agent/SKILL.md");
+    const review = await source("skills/qoder-agent/references/worktree-review.md");
+    const protocol = await source("skills/qoder-agent/references/protocol.md");
 
     expect(skill).toContain("scripts/qoder_agent_task.mjs");
     expect(skill).toContain("qoder_agent_task.mjs start");
@@ -29,9 +29,9 @@ describe("Qoder Skill Task migration", () => {
   });
 
   it("uses task-facing workspace disclosure and opaque retry preparation", async () => {
-    const skill = await source("skill/qoder-agent/SKILL.md");
-    const review = await source("skill/qoder-agent/references/worktree-review.md");
-    const delegation = await source("skill/qoder-agent/references/delegation-prompt.md");
+    const skill = await source("skills/qoder-agent/SKILL.md");
+    const review = await source("skills/qoder-agent/references/worktree-review.md");
+    const delegation = await source("skills/qoder-agent/references/delegation-prompt.md");
 
     for (const text of [skill, review, delegation]) {
       expect(text).toContain("workspace.cwd");
@@ -49,8 +49,8 @@ describe("Qoder Skill Task migration", () => {
   });
 
   it("keeps Runner execution policy in Host and uses one pre-MCP blocking wait profile", async () => {
-    const skill = await source("skill/qoder-agent/SKILL.md");
-    const protocol = await source("skill/qoder-agent/references/protocol.md");
+    const skill = await source("skills/qoder-agent/SKILL.md");
+    const protocol = await source("skills/qoder-agent/references/protocol.md");
 
     for (const text of [skill, protocol]) {
       expect(text).not.toContain("--long-task");
@@ -89,7 +89,9 @@ describe("Qoder Skill Task migration", () => {
     const validator = await source("scripts/validate_skill_distribution.mjs");
     const packageJson = await source("package.json");
 
-    expect(config).not.toContain("skill/qoder-agent/scripts");
+    expect(config).not.toContain("skills/qoder-agent/scripts");
+    expect(builder).toContain('resolve(root, "skills/qoder-agent")');
+    expect(validator).toContain('resolve(root, "skills/qoder-agent")');
     expect(builder).toContain("dist/skills/qoder-agent");
     expect(builder).toContain('"SKILL.md", "agents", "references"');
     expect(builder).toContain("for (const [name, entry] of Object.entries(standaloneEntries))");
