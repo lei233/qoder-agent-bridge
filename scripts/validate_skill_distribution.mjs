@@ -42,8 +42,11 @@ for (const authoredPath of await authoredFiles()) {
 const distributedScripts = (await readdir(resolve(distRoot, "scripts")))
   .filter((name) => name.endsWith(".mjs"))
   .sort();
-if (JSON.stringify(distributedScripts) !== JSON.stringify([...scripts].sort())) {
-  throw new Error("Skill distribution must contain exactly the three standalone scripts.");
+const expectedScripts = [...scripts].sort();
+if (JSON.stringify(distributedScripts) !== JSON.stringify(expectedScripts)) {
+  throw new Error(
+    `Skill distribution must contain exactly the three standalone scripts. Expected ${expectedScripts.join(", ")}; found ${distributedScripts.join(", ")}.`,
+  );
 }
 
 for (const script of scripts) {
