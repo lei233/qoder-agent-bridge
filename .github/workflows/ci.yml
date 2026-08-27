@@ -41,7 +41,10 @@ jobs:
           command -v unzip
 
       - name: Check formatting
-        run: pnpm format:check
+        run: |
+          pnpm format
+          git diff -- scripts/pack_skill.mjs scripts/validate_skill_distribution.mjs
+          git diff --exit-code
 
       - name: Lint
         run: pnpm lint
