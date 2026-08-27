@@ -1,4 +1,0 @@
-interface:
-  display_name: "Qoder Worker"
-  short_description: "Compile context-aware Qoder work for safe review"
-  default_prompt: "Use $qoder-worker to compile relevant project context and Skill guidance into bounded Qoder work, then review its isolated diff before applying it."
