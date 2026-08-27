@@ -7,12 +7,12 @@
   "type": "module",
   "scripts": {
     "build": "tsdown && node scripts/validate_build.mjs",
-    "skill:build": "pnpm build",
-    "skill:artifacts:check": "node scripts/check_skill_artifacts.mjs",
+    "skill:build": "node scripts/build_skill.mjs",
+    "skill:validate": "node scripts/validate_skill_distribution.mjs",
+    "skill:check": "pnpm skill:build && pnpm skill:validate && pnpm test",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
-    "skill:check": "pnpm skill:artifacts:check && pnpm skill:build && node --check skill/qoder-agent/scripts/run_qoder.mjs && node --check skill/qoder-agent/scripts/qoder_worktree.mjs && node --check skill/qoder-agent/scripts/qoder_agent_task.mjs && pnpm test && if python3 -c 'import yaml' >/dev/null 2>&1; then python3 /Users/lei/.codex/skills/.system/skill-creator/scripts/quick_validate.py skill/qoder-agent && python3 /Users/lei/.codex/skills/.system/skill-creator/scripts/quick_validate.py skill/qoder-worker; else node scripts/validate_skill.mjs skill/qoder-agent && node scripts/validate_skill.mjs skill/qoder-worker; fi",
     "test": "vitest run",
     "typecheck": "tsc --noEmit --project tsconfig.json"
   },
