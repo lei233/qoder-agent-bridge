@@ -103,8 +103,8 @@ there is no compatibility shim in current releases.
 
 ## Build an installable Skill from source
 
-The authored Skill source is only `skill/qoder-agent/SKILL.md`,
-`skill/qoder-agent/agents/**`, and `skill/qoder-agent/references/**`. Generated
+The authored Skill source is only `skills/qoder-agent/SKILL.md`,
+`skills/qoder-agent/agents/**`, and `skills/qoder-agent/references/**`. Generated
 standalone scripts never live in that source tree.
 
 From a source checkout:
@@ -186,7 +186,7 @@ node "$QODER_AGENT_SKILL/scripts/qoder_agent_task.mjs" apply \
 ```
 
 Review correction and failed-run retry rules live in
-[skill/qoder-agent/references/worktree-review.md](skill/qoder-agent/references/worktree-review.md).
+[skills/qoder-agent/references/worktree-review.md](skills/qoder-agent/references/worktree-review.md).
 The Task-level retry vocabulary is:
 
 ```text
@@ -205,13 +205,13 @@ Qoder does not need Codex Skills installed and must not be asked to invoke them.
 
 See:
 
-- [skill/qoder-agent/SKILL.md](skill/qoder-agent/SKILL.md) for the authoritative
+- [skills/qoder-agent/SKILL.md](skills/qoder-agent/SKILL.md) for the authoritative
   collaboration and approval workflow;
-- [delegation-prompt.md](skill/qoder-agent/references/delegation-prompt.md) for
+- [delegation-prompt.md](skills/qoder-agent/references/delegation-prompt.md) for
   context compilation and preview fidelity;
-- [worktree-review.md](skill/qoder-agent/references/worktree-review.md) for
+- [worktree-review.md](skills/qoder-agent/references/worktree-review.md) for
   Candidate review, repair/retry, apply, and discard policy; and
-- [protocol.md](skill/qoder-agent/references/protocol.md) for Task-facing Runner
+- [protocol.md](skills/qoder-agent/references/protocol.md) for Task-facing Runner
   evidence and the pre-MCP blocking command-session waiting contract.
 
 ## Low-level compatibility
@@ -239,7 +239,7 @@ The maintained implementation is TypeScript under `packages/core` and
 `packages/cli`. `pnpm build` builds package outputs only. `pnpm skill:build`
 assembles `dist/skills/qoder-agent/` from authored Skill files plus three
 independently bundled standalone scripts. `dist/` is generated and ignored by
-Git; do not commit generated Skill bundles back into `skill/qoder-agent/`.
+Git; do not commit generated Skill bundles back into `skills/qoder-agent/`.
 
 ## Release model
 
