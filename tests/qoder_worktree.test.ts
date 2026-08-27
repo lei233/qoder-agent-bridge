@@ -29,7 +29,7 @@ import { enforceIncludedArtifactLimits } from "../packages/core/src/worktree/inc
 
 const fixtures: string[] = [];
 const worktreeRunnerPath = fileURLToPath(
-  new URL("../skill/qoder-agent/scripts/qoder_worktree.mjs", import.meta.url),
+  new URL("../dist/skills/qoder-agent/scripts/qoder_worktree.mjs", import.meta.url),
 );
 
 afterEach(async () => {
