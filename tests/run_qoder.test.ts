@@ -33,7 +33,7 @@ import {
 import { redactSecrets } from "../packages/core/src/runner/output";
 
 const runnerPath = fileURLToPath(
-  new URL("../skill/qoder-agent/scripts/run_qoder.mjs", import.meta.url),
+  new URL("../dist/skills/qoder-agent/scripts/run_qoder.mjs", import.meta.url),
 );
 
 class FakeChild extends EventEmitter {
