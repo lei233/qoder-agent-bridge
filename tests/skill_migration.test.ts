@@ -83,15 +83,20 @@ describe("Qoder Skill Task migration", () => {
     expect(protocol).not.toContain("process group");
   });
 
-  it("tracks the task-aware standalone Skill artifact in build freshness checks", async () => {
+  it("keeps authored Skill source separate from generated distribution artifacts", async () => {
     const config = await source("tsdown.config.ts");
-    const buildValidation = await source("scripts/validate_build.mjs");
-    const freshness = await source("scripts/check_skill_artifacts.mjs");
+    const builder = await source("scripts/build_skill.mjs");
+    const validator = await source("scripts/validate_skill_distribution.mjs");
     const packageJson = await source("package.json");
 
-    expect(config).toContain('qoder_agent_task: "packages/cli/src/qoder-agent-task.ts"');
-    expect(buildValidation).toContain("skill/qoder-agent/scripts/qoder_agent_task.mjs");
-    expect(freshness).toContain("skill/qoder-agent/scripts/qoder_agent_task.mjs");
-    expect(packageJson).toContain("node --check skill/qoder-agent/scripts/qoder_agent_task.mjs");
+    expect(config).not.toContain("skill/qoder-agent/scripts");
+    expect(builder).toContain('dist/skills/qoder-agent');
+    expect(builder).toContain('"SKILL.md", "agents", "references"');
+    expect(builder).toContain("manifest.json");
+    expect(validator).toContain("Skill manifest file set does not match");
+    expect(validator).toContain("must inline @qoder-agent-bridge/core");
+    expect(packageJson).toContain('"skill:build": "node scripts/build_skill.mjs"');
+    expect(packageJson).toContain('"skill:validate": "node scripts/validate_skill_distribution.mjs"');
+    expect(packageJson).not.toContain("skill:artifacts:check");
   });
 });
