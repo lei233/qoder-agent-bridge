@@ -60,39 +60,86 @@ and acceptance owner. Qoder is a bounded executor.
 - Ambiguous external side effects fail closed. A preserved Task lock means stop
   and diagnose rather than replay the operation.
 
-## Requirements
+## Runtime requirements
 
-- Node.js `>=22.18.0`
-- pnpm `9.15.4` or a compatible pnpm 9 release
-- A locally installed and authenticated Qoder CLI
+The installable Skill distribution currently targets Linux hosts and requires:
+
+- Node.js `>=22.18.0`;
+- Git; and
+- a locally installed and authenticated Qoder CLI.
 
 Make `qodercli` available on `PATH`, or configure its absolute path through
-`QODERCLI_PATH`. On Windows, use the native `qodercli.exe`; shell command shims
-are rejected by the Runner safety boundary.
+`QODERCLI_PATH`.
 
-## Install the Skills
+`pnpm`, TypeScript, the workspace packages, and this repository are build-time
+requirements only. They are not required by an installed release Skill.
 
-For a project-local installation:
+## Install the Skill
+
+The supported installable artifact is the `qoder-agent-v<version>.zip` asset
+attached to a GitHub Release. The ZIP contains exactly one top-level
+`qoder-agent/` directory with `SKILL.md`, authored references and agent metadata,
+the three standalone scripts, and `manifest.json`.
+
+Extract that ZIP and copy the resulting directory into the desired Codex Skills
+location. For a project-local installation:
 
 ```sh
 mkdir -p /path/to/project/.codex/skills
-cp -R skill/qoder-agent /path/to/project/.codex/skills/qoder-agent
-cp -R skill/qoder-worker /path/to/project/.codex/skills/qoder-worker
+unzip qoder-agent-v0.1.0.zip
+cp -R qoder-agent /path/to/project/.codex/skills/qoder-agent
 ```
 
-For personal use, copy both directories to `~/.codex/skills/` or the configured
-Codex skills directory. `qoder-worker` is a compatibility alias that delegates
-to the co-installed `qoder-agent` workflow.
+For personal use, copy `qoder-agent/` to `~/.codex/skills/` or the configured
+Codex Skills directory.
+
+Do not install from GitHub's automatically generated source ZIP/tar archives.
+Those archives contain repository source, not the generated standalone Skill
+distribution.
+
+The former `qoder-worker` compatibility Skill has been removed. If an older
+installation still contains `qoder-worker/`, remove that directory manually;
+there is no compatibility shim in current releases.
+
+## Build an installable Skill from source
+
+The authored Skill source is only `skill/qoder-agent/SKILL.md`,
+`skill/qoder-agent/agents/**`, and `skill/qoder-agent/references/**`. Generated
+standalone scripts never live in that source tree.
+
+From a source checkout:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm skill:build
+pnpm skill:validate
+```
+
+The generated installable directory is `dist/skills/qoder-agent/`. To create the
+same ZIP shape used for releases, run:
+
+```sh
+pnpm skill:pack
+```
+
+This writes `dist/releases/qoder-agent-v<version>.zip`. Local builds do not
+require GitHub Actions.
 
 ## Task-aware CLI
 
-The Skill normally drives the generated standalone executable
-`skill/qoder-agent/scripts/qoder_agent_task.mjs`.
+Inside an installed Skill, the normal entry point is
+`scripts/qoder_agent_task.mjs`. For examples below, point `QODER_AGENT_SKILL` at
+the installed directory. In a source checkout after `pnpm skill:build`, use
+`$PWD/dist/skills/qoder-agent`.
+
+```sh
+QODER_AGENT_SKILL=/absolute/path/to/qoder-agent
+```
 
 Start an isolated Task from the authorized host directory:
 
 ```sh
-node skill/qoder-agent/scripts/qoder_agent_task.mjs start \
+node "$QODER_AGENT_SKILL/scripts/qoder_agent_task.mjs" start \
   --cwd /absolute/authorized/project
 ```
 
@@ -100,7 +147,7 @@ Record the returned `taskStatePath`, then obtain the Task-facing workspace
 disclosure:
 
 ```sh
-node skill/qoder-agent/scripts/qoder_agent_task.mjs inspect \
+node "$QODER_AGENT_SKILL/scripts/qoder_agent_task.mjs" inspect \
   --task /absolute/path/to/task.json
 ```
 
@@ -111,7 +158,7 @@ carry Worktree session paths or phases.
 Run one approved bounded delegation brief:
 
 ```sh
-node skill/qoder-agent/scripts/qoder_agent_task.mjs run \
+node "$QODER_AGENT_SKILL/scripts/qoder_agent_task.mjs" run \
   --task /absolute/path/to/task.json \
   --prompt-file /absolute/path/to/delegation-brief.md
 ```
@@ -126,14 +173,14 @@ See `protocol.md` below.
 After a successful Invocation, freeze an immutable Candidate:
 
 ```sh
-node skill/qoder-agent/scripts/qoder_agent_task.mjs candidate \
+node "$QODER_AGENT_SKILL/scripts/qoder_agent_task.mjs" candidate \
   --task /absolute/path/to/task.json
 ```
 
 After independent review and separate approval, apply the exact Candidate ID:
 
 ```sh
-node skill/qoder-agent/scripts/qoder_agent_task.mjs apply \
+node "$QODER_AGENT_SKILL/scripts/qoder_agent_task.mjs" apply \
   --task /absolute/path/to/task.json \
   --candidate <candidate-id>
 ```
@@ -169,37 +216,47 @@ See:
 
 ## Low-level compatibility
 
-The generated `run_qoder.mjs` and `qoder_worktree.mjs` executables remain
-available for compatibility and mechanical diagnosis. Full `task get` output is
-also a diagnostic surface. The low-level Runner CLI may expose timeout controls
-that the normal Task CLI intentionally does not. Diagnostic surfaces must not be
-used to bypass Task locking, Candidate identity, explicit approvals, retry
-policy, or a fail-closed result.
+The distributed `run_qoder.mjs` and `qoder_worktree.mjs` executables remain
+available for mechanical diagnosis. Full `task get` output is also a diagnostic
+surface. The low-level Runner CLI may expose timeout controls that the normal
+Task CLI intentionally does not. Diagnostic surfaces must not be used to bypass
+Task locking, Candidate identity, explicit approvals, retry policy, or a
+fail-closed result.
 
 ## Development checks
 
 ```sh
-pnpm install
-pnpm format
-pnpm typecheck
-pnpm test
-pnpm lint
-pnpm skill:build
-pnpm skill:artifacts:check
-pnpm skill:check
-pnpm build
+pnpm install --frozen-lockfile
 pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm skill:check
+pnpm skill:pack
 ```
 
 The maintained implementation is TypeScript under `packages/core` and
-`packages/cli`. `pnpm skill:build` regenerates the committed standalone Skill
-executables under `skill/qoder-agent/scripts/`; do not edit those generated
-`.mjs` files directly.
+`packages/cli`. `pnpm build` builds package outputs only. `pnpm skill:build`
+assembles `dist/skills/qoder-agent/` from authored Skill files plus three
+independently bundled standalone scripts. `dist/` is generated and ignored by
+Git; do not commit generated Skill bundles back into `skill/qoder-agent/`.
+
+## Release model
+
+`package.json.version` is the sole release version authority. A formal release
+is triggered only by pushing the exact `v<version>` tag, including prerelease
+versions such as `v0.2.0-beta.1`. The tag must point at the clean checkout being
+built. The release workflow rebuilds and validates the distribution, creates
+only the installable Skill ZIP, attaches it to a draft GitHub Release, and then
+publishes the release.
+
+Repository **Release immutability must be enabled** before publishing formal
+releases. The workflow verifies the published release with GitHub CLI and will
+fail rather than treat a mutable release as valid. Source archives generated by
+GitHub are repository snapshots and are not release artifacts for Skill
+installation.
 
 ## Architecture checkpoint
-
-PR1–PR4 intentionally stop after establishing Task Core, the Embedded Host,
-the Task-aware Skill migration, and a reduced Task-facing Skill surface.
 
 Before implementing a SQLite Task Manager, daemon, or MCP interface, read
 [docs/task-core-migration-evaluation.md](docs/task-core-migration-evaluation.md).
