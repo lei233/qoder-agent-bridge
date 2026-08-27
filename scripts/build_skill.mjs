@@ -25,18 +25,21 @@ for (const authoredRoot of authoredRoots) {
   await cp(resolve(sourceRoot, authoredRoot), resolve(distRoot, authoredRoot), { recursive: true });
 }
 
-await build({
-  config: false,
-  entry: standaloneEntries,
-  outDir: scriptsRoot,
-  outExtensions: () => ({ js: ".mjs" }),
-  format: ["esm"],
-  dts: false,
-  sourcemap: false,
-  treeshake: false,
-  clean: false,
-  deps: { alwaysBundle: ["@qoder-agent-bridge/core"] },
-});
+for (const [name, entry] of Object.entries(standaloneEntries)) {
+  await build({
+    config: false,
+    entry: { [name]: entry },
+    outDir: scriptsRoot,
+    outExtensions: () => ({ js: ".mjs" }),
+    format: ["esm"],
+    dts: false,
+    sourcemap: false,
+    treeshake: false,
+    clean: false,
+    report: false,
+    deps: { alwaysBundle: ["@qoder-agent-bridge/core"] },
+  });
+}
 
 const packageJson = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
 const git = await gitMetadata();
