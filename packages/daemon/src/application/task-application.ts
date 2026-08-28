@@ -8,10 +8,7 @@ import {
   type TaskResolutionResult,
   type TaskRunnerOptions,
 } from "./internal/host";
-import {
-  inspectTaskWorkspace,
-  type TaskWorkspaceInspection,
-} from "./internal/skill-bridge";
+import { inspectTaskWorkspace, type TaskWorkspaceInspection } from "./internal/skill-bridge";
 
 export type TaskApplicationDependencies = EmbeddedTaskHostDependencies;
 
