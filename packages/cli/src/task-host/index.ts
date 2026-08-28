@@ -9,11 +9,11 @@ import {
  * symbol while all orchestration is owned by TaskApplication in packages/daemon.
  */
 export class EmbeddedTaskHost extends TaskApplication {
-  run(taskStatePath: string, options: TaskRunnerOptions, _clientSignal?: AbortSignal) {
+  override run(taskStatePath: string, options: TaskRunnerOptions, _clientSignal?: AbortSignal) {
     return super.run(taskStatePath, options);
   }
 
-  repair(taskStatePath: string, options: TaskRunnerOptions, _clientSignal?: AbortSignal) {
+  override repair(taskStatePath: string, options: TaskRunnerOptions, _clientSignal?: AbortSignal) {
     return super.repair(taskStatePath, options);
   }
 

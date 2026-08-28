@@ -40,9 +40,11 @@ export class TaskApplication {
   }
 
   inspectTask(taskStatePath: string): Promise<TaskWorkspaceInspection> {
-    return inspectTaskWorkspace(taskStatePath, {
-      inspectWorktree: this.#dependencies.inspectWorktree,
-    });
+    const inspectWorktree = this.#dependencies.inspectWorktree;
+    return inspectTaskWorkspace(
+      taskStatePath,
+      inspectWorktree === undefined ? {} : { inspectWorktree },
+    );
   }
 
   run(taskStatePath: string, options: TaskRunnerOptions): Promise<InvocationOperationResult> {
