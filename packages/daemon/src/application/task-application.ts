@@ -63,7 +63,10 @@ export class TaskApplication {
     return this.#host.prepareSuccessorRetry(taskStatePath);
   }
 
-  retryContinue(taskStatePath: string, options: TaskRunnerOptions): Promise<InvocationOperationResult> {
+  retryContinue(
+    taskStatePath: string,
+    options: TaskRunnerOptions,
+  ): Promise<InvocationOperationResult> {
     return this.#host.retry(taskStatePath, options);
   }
 
