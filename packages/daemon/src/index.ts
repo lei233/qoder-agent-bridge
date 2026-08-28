@@ -1,7 +1,4 @@
-export {
-  TaskApplication,
-  type TaskApplicationDependencies,
-} from "./application/task-application";
+export { TaskApplication, type TaskApplicationDependencies } from "./application/task-application";
 export {
   TaskHostError,
   normalizeHostError,
