@@ -265,19 +265,18 @@ only the explicit retry strategies in `worktree-review.md`:
 Do not use a Task-level `recover` command.
 
 The Task caller supplies the prompt and may supply a model preference. Do not
-pass timeout, Runner internal model-request retry, long-task, or executable-path
-controls through the Task CLI. `EmbeddedTaskHost` resolves those execution
-mechanics from trusted deployment policy for each Runner-owning Invocation and
-records the actual policy only in its immutable result artifact.
+pass timeout, Runner internal model-request retry, or executable-path controls
+through the Task CLI. `EmbeddedTaskHost` resolves those execution mechanics from
+trusted deployment policy for each Runner-owning Invocation and records the
+actual policy only in its immutable result artifact.
 
 Until a native MCP Task tool replaces this terminal adapter, use the unified
 **host-tool wait budget** from `protocol.md` for every Runner-owning Task
-Invocation. Do not ask the user to classify a Task as long running. Keep a live
-Task CLI invocation logically blocked: do not convert it into an asynchronous
-background workflow, do not poll it at short intervals, and do not perform
-unrelated work between waits. The Task Host owns Runner process, timeout,
-termination, and result-persistence mechanics; the Skill owns only this
-temporary Codex host-call blocking discipline.
+Invocation. Keep a live Task CLI invocation logically blocked: do not convert it
+into an asynchronous background workflow, do not poll it at short intervals,
+and do not perform unrelated work between waits. The Task Host owns Runner
+process, timeout, termination, and result-persistence mechanics; the Skill owns
+only this temporary Codex host-call blocking discipline.
 
 ## Complete the Review Lifecycle
 
@@ -314,6 +313,5 @@ ambiguous external side effect.
 ## Install the Skill
 
 Copy this directory to a project's `.codex/skills/qoder-agent/` or the personal
-Codex skills directory. Retain `scripts/`, `references/`, and `agents/`, keep
-all three bundled scripts executable, and make `qodercli` available on `PATH`
-or through an absolute deployment `QODERCLI_PATH`.
+Codex skills directory. Retain `scripts/`, `references/`, and `agents/`, and make
+`qodercli` available on `PATH` or through an absolute deployment `QODERCLI_PATH`.

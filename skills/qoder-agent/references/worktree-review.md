@@ -42,9 +42,8 @@ review, correction, retry choice, approval, and acceptance.
      --prompt-file <absolute-brief-path>
    ```
 
-   Keep the Task CLI command unchanged for an explicitly long-running
-   Invocation; only the Codex host-tool wait policy changes under `protocol.md`.
-   Wait for the final Task JSON there.
+   Keep the Task CLI command logically blocked according to the unified
+   host-tool waiting contract in `protocol.md`, and wait for the final Task JSON.
 
 7. After a successful Invocation, freeze the review result:
 

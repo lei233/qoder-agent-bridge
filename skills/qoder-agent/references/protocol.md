@@ -32,10 +32,10 @@ For Skill-driven work use `--prompt-file`; inline `--prompt` is compatibility
 only.
 
 The normal Task surface does not accept Runner-mechanical overrides such as
-`--timeout-ms`, caller-selected internal retry counts, explicit executable
-overrides, or a caller-selected long-task mode. Invocation callers choose the prompt and may choose a model;
-the Task Host deployment chooses executable resolution, timeout, and Runner
-internal model-request retry policy.
+`--timeout-ms`, caller-selected internal retry counts, or explicit executable
+overrides. Invocation callers choose the prompt and may choose a model; the Task
+Host deployment chooses executable resolution, timeout, and Runner internal
+model-request retry policy.
 
 Commands that do not invoke Qoder include `start`, `inspect`, `candidate`,
 `prepare-retry`, `discard-retry`, `apply`, `discard`, `fail`, and `get`.
@@ -288,11 +288,10 @@ not a Task or Runner architecture invariant. If the host supports a different
 maximum blocking duration, use the longest reasonable supported wait while
 keeping synchronization headroom.
 
-Do not ask the user to classify an Invocation as long running. Do not issue
-shorter or higher-frequency waits, launch duplicate Task commands, run
-concurrent `task inspect`, or perform unrelated work merely because the terminal
-returned a live session. Start another wait round only when the prior long wait
-still returns a live session ID.
+Do not issue shorter or higher-frequency waits, launch duplicate Task commands,
+run concurrent `task inspect`, or perform unrelated work merely because the
+terminal returned a live session. Start another wait round only when the prior
+wait still returns a live session ID.
 
 If the command channel is lost, accept completion only when Task state and its
 immutable `resultRef` establish a consistent final Invocation. If completion

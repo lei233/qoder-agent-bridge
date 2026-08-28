@@ -74,11 +74,12 @@ Codex 始终是规划、上下文编译、审阅、retry 策略和验收负责�
 `SKILL.md`、authoring references 与 agent metadata、三个 standalone 脚本，以及
 `manifest.json`。
 
-解压后，把得到的 `qoder-agent/` 目录复制到目标 Codex Skills 目录。项目级安装示例：
+解压后，把得到的 `qoder-agent/` 目录复制到目标 Codex Skills 目录。以 v0.2.0 为例，
+项目级安装方式如下：
 
 ```sh
 mkdir -p /path/to/project/.codex/skills
-unzip qoder-agent-v0.1.0.zip
+unzip qoder-agent-v0.2.0.zip
 cp -R qoder-agent /path/to/project/.codex/skills/qoder-agent
 ```
 
@@ -150,11 +151,9 @@ node "$QODER_AGENT_SKILL/scripts/qoder_agent_task.mjs" run \
   --prompt-file /absolute/path/to/delegation-brief.md
 ```
 
-所有 Task-managed Runner Invocation 都固定使用 Runner 已有的 1 小时最大安全上限。
-Task CLI 不提供长任务模式，也不提供手工 timeout 参数。只有当用户显式说明某个
-Invocation 是长任务时，Codex 才改变终端工具的阻塞等待策略，让同一个 Task CLI
-调用持续保持逻辑阻塞，而不是转成后台轮询工作流。具体等待契约见下文的
-`protocol.md`。
+所有 Task-managed Runner Invocation 都使用 Host-owned execution policy，默认 timeout
+为 Runner 现有的 1 小时最大安全上限。Task CLI 不暴露手工 timeout 控制。调用期间按照
+`protocol.md` 的统一等待契约，让同一个 Task CLI 调用持续保持逻辑阻塞。
 
 Invocation 成功后冻结不可变 Candidate：
 

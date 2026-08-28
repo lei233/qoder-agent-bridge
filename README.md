@@ -82,11 +82,11 @@ attached to a GitHub Release. The ZIP contains exactly one top-level
 the three standalone scripts, and `manifest.json`.
 
 Extract that ZIP and copy the resulting directory into the desired Codex Skills
-location. For a project-local installation:
+location. For the v0.2.0 release, a project-local installation looks like:
 
 ```sh
 mkdir -p /path/to/project/.codex/skills
-unzip qoder-agent-v0.1.0.zip
+unzip qoder-agent-v0.2.0.zip
 cp -R qoder-agent /path/to/project/.codex/skills/qoder-agent
 ```
 
@@ -163,12 +163,10 @@ node "$QODER_AGENT_SKILL/scripts/qoder_agent_task.mjs" run \
   --prompt-file /absolute/path/to/delegation-brief.md
 ```
 
-Every Task-managed Runner Invocation is pinned to the Runner's existing one-hour
-maximum safety ceiling. The Task CLI exposes neither a long-task mode nor a
-manual timeout option. When a user explicitly identifies an Invocation as long
-running, only Codex's terminal blocking-wait policy changes so the same Task CLI
-call stays logically blocked instead of becoming a background polling workflow.
-See `protocol.md` below.
+Every Task-managed Runner Invocation uses Host-owned execution policy with a
+default timeout at the Runner's existing one-hour maximum safety ceiling. The
+Task CLI does not expose manual timeout controls. Keep the Task CLI call
+logically blocked according to the unified waiting contract in `protocol.md`.
 
 After a successful Invocation, freeze an immutable Candidate:
 

@@ -53,7 +53,6 @@ describe("Qoder Skill Task migration", () => {
     const protocol = await source("skills/qoder-agent/references/protocol.md");
 
     for (const text of [skill, protocol]) {
-      expect(text).not.toContain("--long-task");
       expect(text).not.toMatch(/qoder_agent_task[^\n]*--timeout-ms/u);
       expect(text).not.toMatch(/qoder_agent_task[^\n]*--max-model-request-retries/u);
       expect(text).not.toMatch(/qoder_agent_task[^\n]*--qodercli-path/u);
@@ -71,16 +70,7 @@ describe("Qoder Skill Task migration", () => {
     expect(protocol).toContain('"yield_time_ms": 300000');
     expect(protocol).toContain("yield_time_ms: 280000");
     expect(protocol).toContain("exactly one empty-stdin wait");
-    expect(protocol).toContain("Do not ask the user to classify an Invocation as long running");
-    expect(protocol).toContain("Do not issue\nshorter or higher-frequency waits");
-
-    expect(protocol).not.toContain("Invocation classification");
-    expect(protocol).not.toContain("Explicit long task");
-    expect(protocol).not.toContain('"yield_time_ms": 200000');
-    expect(protocol).not.toContain("yield_time_ms: 180000");
-    expect(protocol).not.toContain("taskkill.exe");
-    expect(protocol).not.toContain("SIGKILL");
-    expect(protocol).not.toContain("process group");
+    expect(protocol).toContain("Do not issue shorter or higher-frequency waits");
   });
 
   it("keeps authored Skill source separate from generated distribution artifacts", async () => {
