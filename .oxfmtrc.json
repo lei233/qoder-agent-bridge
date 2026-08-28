@@ -1,9 +1,6 @@
 {
   "$schema": "https://oxc.rs/schemas/oxfmt-config.json",
-  "ignorePatterns": [
-    "skill/qoder-agent/scripts/*.mjs",
-    "docs/task-daemon-v0.3-architecture.md"
-  ],
+  "ignorePatterns": ["skill/qoder-agent/scripts/*.mjs", "docs/task-daemon-v0.3-architecture.md"],
   "printWidth": 100,
   "semi": true,
   "singleQuote": false,
