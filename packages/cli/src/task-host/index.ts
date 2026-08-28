@@ -1,12 +1,68 @@
-export { TaskHostError, normalizeHostError } from "./errors";
+import {
+  TaskApplication,
+  type TaskApplicationDependencies,
+  type TaskRunnerOptions,
+} from "@qoder-agent-bridge/daemon";
+
+/**
+ * PR 1 compatibility adapter. The CLI and existing tests may keep the old
+ * symbol while all orchestration is owned by TaskApplication in packages/daemon.
+ */
+export class EmbeddedTaskHost extends TaskApplication {
+  run(taskStatePath: string, options: TaskRunnerOptions, _clientSignal?: AbortSignal) {
+    return super.run(taskStatePath, options);
+  }
+
+  repair(taskStatePath: string, options: TaskRunnerOptions, _clientSignal?: AbortSignal) {
+    return super.repair(taskStatePath, options);
+  }
+
+  retry(taskStatePath: string, options: TaskRunnerOptions, _clientSignal?: AbortSignal) {
+    return super.retryContinue(taskStatePath, options);
+  }
+
+  runPreparedSuccessorRetry(
+    taskStatePath: string,
+    preparationId: string,
+    options: TaskRunnerOptions,
+    _clientSignal?: AbortSignal,
+  ) {
+    return super.retryRestart(taskStatePath, preparationId, options);
+  }
+
+  get(taskStatePath: string) {
+    return super.getTask(taskStatePath);
+  }
+
+  prepareSuccessorRetry(taskStatePath: string) {
+    return super.prepareRetry(taskStatePath);
+  }
+
+  discardPreparedSuccessorRetry(taskStatePath: string, preparationId: string) {
+    return super.discardRetry(taskStatePath, preparationId);
+  }
+}
+
+export type EmbeddedTaskHostDependencies = TaskApplicationDependencies;
+export type SkillBridgeDependencies = TaskApplicationDependencies;
+
+export function inspectTaskWorkspace(
+  taskStatePath: string,
+  dependencies: SkillBridgeDependencies = {},
+) {
+  return new TaskApplication(dependencies).inspectTask(taskStatePath);
+}
+
 export {
+  TaskApplication,
+  TaskHostError,
+  normalizeHostError,
   DEFAULT_TASK_MAX_MODEL_REQUEST_RETRIES,
   DEFAULT_TASK_TIMEOUT_MS,
   resolveTaskExecutionPolicy,
-  type TaskExecutionPolicy,
-} from "./execution-policy";
-export { acquireTaskLock, lockPathForTask, TaskLock } from "./lock";
-export {
+  acquireTaskLock,
+  lockPathForTask,
+  TaskLock,
   TASK_CANDIDATE_DIR,
   TASK_INVOCATION_DIR,
   TASK_RETRY_PREPARATION_DIR,
@@ -15,22 +71,17 @@ export {
   TaskFileStore,
   createTaskRoot,
   parseTaskState,
-} from "./store";
-export {
-  EmbeddedTaskHost,
   type CandidateOperationResult,
   type CleanupIssue,
-  type EmbeddedTaskHostDependencies,
   type InvocationOperationResult,
+  type NormalizedHostError,
   type PreparedSuccessorRetry,
+  type RetryEligibility,
   type StartTaskResult,
+  type TaskApplicationDependencies,
+  type TaskExecutionPolicy,
   type TaskResolutionResult,
   type TaskRunnerOptions,
-} from "./host";
-export {
-  inspectTaskWorkspace,
-  type RetryEligibility,
-  type SkillBridgeDependencies,
   type TaskWorkspaceDisclosure,
   type TaskWorkspaceInspection,
-} from "./skill-bridge";
+} from "@qoder-agent-bridge/daemon";
