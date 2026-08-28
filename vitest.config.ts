@@ -7,6 +7,9 @@ export default defineConfig({
       "@qoder-agent-bridge/core": fileURLToPath(
         new URL("./packages/core/src/index.ts", import.meta.url),
       ),
+      "@qoder-agent-bridge/daemon": fileURLToPath(
+        new URL("./packages/daemon/src/index.ts", import.meta.url),
+      ),
     },
   },
   test: {

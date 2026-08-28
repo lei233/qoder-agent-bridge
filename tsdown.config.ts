@@ -14,6 +14,19 @@ export default defineConfig([
     clean: true,
   },
   {
+    entry: "packages/daemon/src/index.ts",
+    outDir: "packages/daemon/dist",
+    outExtensions: outputExtensions,
+    format: ["esm"],
+    dts: true,
+    sourcemap: true,
+    treeshake: false,
+    clean: true,
+    deps: {
+      neverBundle: ["@qoder-agent-bridge/core"],
+    },
+  },
+  {
     entry: {
       "run-qoder": "packages/cli/src/run-qoder.ts",
       "qoder-worktree": "packages/cli/src/qoder-worktree.ts",
